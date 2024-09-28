@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class star_sky:
-    def __init__(self, RA, DEC, longitude, latitude, observation_time, fov=[58, 47], magnitude_limit=3.8, pix=16/1024):
+    def __init__(self, RA, DEC, longitude=0, latitude=0, observation_time=0, fov=[58, 47], magnitude_limit=3.8, pix=16/1024):
         # Загрузка каталога звёзд (предполагаем, что это CSV файл)
         catalogue = pd.read_csv('Catalogue.csv')  # CSV-файл каталога звёзд
 

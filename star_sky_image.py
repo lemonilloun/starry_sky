@@ -3,50 +3,23 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class star_sky:
-    def __init__(self, RA, DEC, longitude=0, latitude=0, observation_time=0, fov=[58, 47], magnitude_limit=3.8, pix=16/1024):
+    def __init__(self, RA, DEC,fov=[58, 47], magnitude_limit=3.8, pix=16/1024):
         # Загрузка каталога звёзд (предполагаем, что это CSV файл)
         catalogue = pd.read_csv('Catalogue.csv')  # CSV-файл каталога звёзд
 
         self.fov = fov
 
         # координаты точки зенита в экваториальных координатах
-        self.RA = RA
-        self.DEC = DEC
+        self.RA_observer = RA
+        self.DEC_observer = DEC
     
-        # Извлечение данных: RA, Dec и видимая величина звёзд
-        self.longitude = np.radians(longitude)
-        self.latitude = np.radians(latitude)
-        self.observation_time = observation_time
         resolution = [1280, 1038]
         self.ra = np.radians(catalogue['RA'])  # Прямое восхождение в радианах
         self.dec = np.radians(catalogue['Dec'])  # Склонение в радианах
         self.magnitude = catalogue['Mag']  # Звёздная величина
-        self.magnitude_limit = 3.8  # Предельная звёздная величина
+        self.magnitude_limit = magnitude_limit # Предельная звёздная величина
         self.matrix_size = np.array(resolution) * pix  # Размер матрицы камеры в
-    
-    def calculate_lst(self):
-        # Вычисление юлианской даты
-        jd = self.julian_date(self.observation_time)
-        
-        # Вычисление числа дней с эпохи J2000.0
-        d = jd - 2451545.0
-        
-        # Вычисление среднего звездного времени в Гринвиче в полночь (в градусах)
-        gmst = 280.46061837 + 360.98564736629 * d
-        
-        # Нормализация GMST в диапазоне [0, 360)
-        gmst = gmst % 360
-        
-        # Перевод GMST в часы
-        gmst_hours = gmst / 15
-        
-        # Вычисление местного звездного времени
-        lst_hours = (gmst_hours + self.longitude * 180 / np.pi / 15) % 24
-        
-        # Перевод LST в радианы
-        lst_radians = lst_hours * 15 * np.pi / 180
-        
-        return lst_radians
+
 
     @staticmethod
     def julian_date(dt):
@@ -59,43 +32,41 @@ class star_sky:
         return jd
 
     #TODO: переписать фукнцию перехода из экваториальных координат в горизонтальные с заданной точкой зенита
-    def transform(self, lat=np.radians(55.0) , lst=np.radians(11.0)):
-       # Параметры наблюдателя (координаты зенита)
-        lat = np.radians(55.0)  # широта Москвы в радианах
-        lst = np.radians(11.0)  # местное звёздное время в радианах (примерное)
-
+    def transform(self):
         # Фильтрация звёзд по предельной звёздной величине
         visible_stars = self.magnitude <= self.magnitude_limit
-        ra_visible = self.ra[visible_stars]
-        dec_visible = self.dec[visible_stars]
+        ra_visible = self.ra[visible_stars]  # alpha
+        dec_visible = self.dec[visible_stars]  # delta
         magnitude_visible = self.magnitude[visible_stars]
 
-        # Часовой угол (H) для каждой звезды
-        H = lst - ra_visible
+        print(f'количество звезд, которые не больше заданной зв: {len(ra_visible)} ')
 
-        #Формула для зенитного расстояния z
-        cos_h = np.sin(dec_visible) * np.sin(lat) + np.cos(dec_visible) * np.cos(lat) * np.cos(H)
-        cos_h = np.clip(cos_h, -1.0, 1.0)  # Ограничиваем значения для предотвращения ошибки arccos
-        h = np.arccos(cos_h)  # зенитное расстояние в радианах
+        # Часовой угол (H)
+        H = ra_visible - self.RA_observer  # аналог t в MATLAB-коде
 
-        # Зенитное расстояние (z) = 90° - высота
-        z = np.pi / 2 - h
+        # Зенитное расстояние (z)
+        z = np.arccos(np.sin(dec_visible) * np.sin(self.DEC_observer) + 
+                  np.cos(dec_visible) * np.cos(self.DEC_observer) * np.cos(H))
+    
+        # Азимут A1 и A2
+        A1 = np.arcsin(np.cos(dec_visible) * np.sin(H) / np.sin(z))
+        A2 = np.arccos((-np.sin(dec_visible) * np.cos(self.DEC_observer) + 
+                    np.cos(dec_visible) * np.sin(self.DEC_observer) * np.cos(H)) / np.sin(z))
 
-        # Формула для синуса азимута A
-        sin_h_safe = np.where(np.abs(np.sin(h)) < 1e-10, 1e-10, np.sin(h))  # Избегаем деления на ноль
-        sin_A = np.cos(dec_visible) * np.sin(H) / sin_h_safe
+        # Логика для определения азимута A
+        A = np.zeros_like(A1)  # Инициализация массива для азимута
+        A[A1 > 0] = A2[A1 > 0]
+        A[A1 < 0] = 2 * np.pi - A2[A1 < 0]
+        A[np.abs(A1) <= 1e-6] = 0  # Если A1 близко к нулю, устанавливаем A в 0
 
-        # Формула для косинуса азимута A
-        cos_A = (-np.sin(dec_visible) + np.cos(dec_visible) * np.sin(lat) * np.cos(H)) / sin_h_safe
+        # Высота светила h (в радианах)
+        h = np.pi / 2 - z
 
-        # Азимут
-        A = np.arctan2(sin_A, cos_A)  # вычисление азимута через atan2
+        return A,magnitude_visible, h
 
-        return (A,z,magnitude_visible, h)
-
-    def filtering_stars(self, A, z, magnitude_visible, h):
+    def filtering_stars(self, A, z, magnitude_visible):
         # Фильтрация звёзд, которые находятся выше горизонта
-        above_horizon = h >= 0
+        above_horizon = z >= 0
         z_above = z[above_horizon]
         A_above = A[above_horizon]
         magnitude_above = magnitude_visible[above_horizon]
@@ -104,22 +75,27 @@ class star_sky:
         angle_x = np.radians(self.fov[0] / 2)  # Половина углового поля зрения по горизонтали
         angle_y = np.radians(self.fov[1] / 2)  # Половина углового поля зрения по вертикали
 
-        # Нахождение границ ksi (lx) и eta (ly)
-        lx = abs((np.sin(np.pi / 2 + angle_x) * np.cos(np.pi / 2) - np.cos(np.pi / 2 + angle_x) * np.sin(np.pi / 2) * np.cos(0)) / \
-            (np.sin(np.pi / 2) * np.sin(np.pi / 2 + angle_x) + np.cos(np.pi / 2 + angle_x) * np.cos(np.pi / 2) * np.cos(0)))
+        # Нахождение границ ksi (lx) и eta (ly) в кадре
+        lx = abs((np.sin(np.pi / 2 + angle_x) * np.cos(np.pi / 2) - np.cos(np.pi / 2 + angle_x) * np.sin(np.pi / 2) * np.cos(0)) / 
+             (np.sin(np.pi / 2) * np.sin(np.pi / 2 + angle_x) + np.cos(np.pi / 2 + angle_x) * np.cos(np.pi / 2) * np.cos(0)))
 
-        ly = abs((np.sin(np.pi / 2 + angle_y) * np.cos(np.pi / 2) - np.cos(np.pi / 2 + angle_y) * np.sin(np.pi / 2) * np.cos(0)) / \
+        ly = abs((np.sin(np.pi / 2 + angle_y) * np.cos(np.pi / 2) - np.cos(np.pi / 2 + angle_y) * np.sin(np.pi / 2) * np.cos(0)) / 
              (np.sin(np.pi / 2) * np.sin(np.pi / 2 + angle_y) + np.cos(np.pi / 2 + angle_y) * np.cos(np.pi / 2) * np.cos(0)))
 
-        # Применение стереографической проекции для координат (A, z)
-        x_proj = np.tan(z_above / 2) * np.cos(A_above)  # ksi
-        y_proj = np.tan(z_above / 2) * np.sin(A_above) # eta
+        # Применение стереографической проекции для координат (A_above, z_above)
+        x_proj = np.tan(z_above / 2) * np.cos(A_above)  # координата ksi
+        y_proj = np.tan(z_above / 2) * np.sin(A_above)  # координата eta
 
-        # Звезды, которые находятся в поле зрения
-        in_fov = (x_proj >= -lx) & (x_proj <= lx) & (y_proj >= -ly) & (y_proj <= ly) # маска для массива 
-        x_fov = np.degrees(x_proj[in_fov])
-        y_fov = np.degrees(y_proj[in_fov])
+        # Фильтрация звезд, попадающих в поле зрения
+        in_fov = (x_proj >= -lx) & (x_proj <= lx) & (y_proj >= -ly) & (y_proj <= ly)  # маска для звёзд в поле зрения
+
+        # Выборка звёзд, которые находятся в пределах рамки изображения
+        x_fov = x_proj[in_fov]
+        y_fov = y_proj[in_fov]
         magnitude_fov = magnitude_above[in_fov]
+
+        # Отладочная информация о количестве звёзд, попавших в объектив
+        print(f'Звезды, которые попадают в объектив: {len(x_fov)}')
 
         return (x_fov, y_fov, magnitude_fov), (lx, ly)
 

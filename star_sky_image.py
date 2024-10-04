@@ -3,48 +3,54 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class star_sky:
-    def __init__(self, observer_ra, observer_dec, observer_longitude, observer_latitude, fov=[58, 47], magnitude_limit=3.8):
+    def __init__(self, observer_ra, observer_dec, fov=[58, 47], magnitude_limit=3.8):
         catalogue = pd.read_csv('Catalogue.csv')  # CSV-файл каталога звёзд
         
         # Извлечение данных: RA, Dec и видимая величина звёзд
         self.observer_ra = observer_ra
         self.observer_dec = observer_dec
-        self.observer_longitude = observer_longitude
-        self.observer_latitude = observer_latitude
         self.fov = fov
         self.magnitude_limit = magnitude_limit
 
 
-        self.ra = catalogue['RA']  # Прямое восхождение
-        self.dec = catalogue['Dec']  # Склонение х
+        self.ra = np.radians(catalogue['RA'])  # Прямое восхождение в радианах
+        self.dec = np.radians(catalogue['Dec'])  # Склонение в радианах
         self.magnitude = catalogue['Mag']  # Звёздная величина
-        self.magnitude_limit = 3.8  # Предельная звёздная величина
-    
-    def calculate_lst(self, time_hours=0):
-        epoch_1991_25_gmst = 198.581921  # GMST на начало эпохи 1991.25 в градусах
-        
-        lst = (epoch_1991_25_gmst + 360.985647 * time_hours / 24 + 
-               np.degrees(self.observer_longitude)) % 360
-        
-        return lst
+        self.magnitude_limit = magnitude_limit  # Предельная звёздная величина
 
-    def transform(self, ra, dec, time_hours=0):
-        lst = self.calculate_lst(time_hours)
-        H = lst - ra
+    def transform(self, delta, alpha):
+        """
+        Преобразование экваториальных координат в горизонтальные.
 
-        sin_alt = (np.sin(self.observer_latitude) * np.sin(dec) + 
-                   np.cos(self.observer_latitude) * np.cos(dec) * np.cos(H))
-        alt = np.arcsin(np.clip(sin_alt, -1, 1))
+        :param phi: Широта наблюдателя (радианы)
+        :param t0: Местное звёздное время наблюдателя (радианы)
+        :param alpha: Прямое восхождение звезды (радианы)
+        :param delta: Склонение звезды (радианы)
+        :return: Высота (h) и азимут (a) звезды
+        """
 
-        cos_A = ((np.sin(dec) - np.sin(self.observer_latitude) * sin_alt) / 
-                 (np.cos(self.observer_latitude) * np.cos(alt)))
-        sin_A = -np.sin(H) * np.cos(dec) / np.cos(alt)
-        
-        az = np.arctan2(sin_A, cos_A) % (2 * np.pi)
+        phi = self.observer_dec
+        t0 = self.observer_ra
 
-        return az, alt
+        # Часовой угол
+        t = alpha - t0
 
-    def process_stars(self, time_hours=0):
+        # Зенитное расстояние
+        z = np.arccos(np.sin(delta) * np.sin(phi) + np.cos(delta) * np.cos(phi) * np.cos(t))
+        # Высота светила
+        h = np.pi / 2 - z
+
+        # Азимут
+        sin_a1 = np.cos(delta) * np.sin(t) / np.sin(z)
+        cos_a2 = (-np.sin(delta) * np.cos(phi) + np.cos(delta) * np.sin(phi) * np.cos(t)) / np.sin(z)
+
+        # Обработка азимута в зависимости от знака sin_a1
+        A = np.where(sin_a1 > 0, np.arccos(cos_a2), 2 * np.pi - np.arccos(cos_a2))
+        A = np.where(np.abs(sin_a1) <= 1e-6, 0, A)
+
+        return A, h
+
+    def process_stars(self):
         # Фильтрация звёзд по звёздной величине
         visible_stars = self.magnitude <= self.magnitude_limit
         ra_visible = self.ra[visible_stars]
@@ -52,7 +58,7 @@ class star_sky:
         magnitude_visible = self.magnitude[visible_stars]
 
         # Преобразование координат
-        az, alt = self.transform(ra_visible, dec_visible, time_hours)
+        az, alt = self.transform(ra_visible, dec_visible)
 
         # Фильтрация звёзд над горизонтом
         above_horizon = alt > 0
@@ -60,25 +66,23 @@ class star_sky:
         alt = alt[above_horizon]
         magnitude_visible = magnitude_visible[above_horizon]
 
-        print(f"Звезд после фильтрации по горизонту: {len(az)}")
+        print(f"Звезд выше горизонта: {len(alt)}")
+
         return az, alt, magnitude_visible.values
     
-    def filtering_stars(self, A, z, magnitude_visible):
+    def filtering_stars(self, A_above, z_above, magnitude_visible):
         # Фильтрация звёзд, которые находятся выше горизонта
-        above_horizon = z >= 0
-        z_above = z[above_horizon]
-        A_above = A[above_horizon]
-        magnitude_above = magnitude_visible[above_horizon]
-
-        print(f"Звезд выше горизонта: {len(z_above)}")
-
+    
         # Углы поля зрения (в радианах)
         angle_x = np.radians(self.fov[0] / 2)
         angle_y = np.radians(self.fov[1] / 2)
 
         # Нахождение границ ksi (lx) и eta (ly)
-        lx = np.tan(angle_x)
-        ly = np.tan(angle_y)
+        lx = abs((np.sin(np.pi / 2 + angle_x) * np.cos(np.pi / 2) - np.cos(np.pi / 2 + angle_x) * np.sin(np.pi / 2) * np.cos(0)) / \
+            (np.sin(np.pi / 2) * np.sin(np.pi / 2 + angle_x) + np.cos(np.pi / 2 + angle_x) * np.cos(np.pi / 2) * np.cos(0)))
+
+        ly = abs((np.sin(np.pi / 2 + angle_y) * np.cos(np.pi / 2) - np.cos(np.pi / 2 + angle_y) * np.sin(np.pi / 2) * np.cos(0)) / \
+             (np.sin(np.pi / 2) * np.sin(np.pi / 2 + angle_y) + np.cos(np.pi / 2 + angle_y) * np.cos(np.pi / 2) * np.cos(0)))
 
         # Применение стереографической проекции для координат (A, z)
         x_proj = np.tan((np.pi/2 - z_above) / 2) * np.cos(A_above)  # ksi
@@ -88,7 +92,7 @@ class star_sky:
         in_fov = (x_proj >= -lx) & (x_proj <= lx) & (y_proj >= -ly) & (y_proj <= ly)
         x_fov = x_proj[in_fov]
         y_fov = y_proj[in_fov]
-        magnitude_fov = magnitude_above[in_fov]
+        magnitude_fov = magnitude_visible[in_fov]
 
         print(f"Звезд в поле зрения: {len(x_fov)}")
         return (x_fov, y_fov, magnitude_fov), (lx, ly)
@@ -97,6 +101,7 @@ class star_sky:
         lx, ly = bords
         # Настройка графика
         plt.figure(figsize=(8, 8), facecolor='black')
+
         plt.scatter(x_fov, y_fov, s=1, color='white')
 
         # Настройки графика
@@ -106,5 +111,4 @@ class star_sky:
         plt.gca().set_aspect('equal')
         plt.axis('off')
 
-        # Показать график
         plt.show()

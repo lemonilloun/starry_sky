@@ -1,32 +1,31 @@
-//#include "mainwindow.h"
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <string>
-//#include <QApplication>
+#include <QApplication>
+#include "StarMapWidget.h"
+#include "StarCatalog.h"
 
-using namespace std;
+int main(int argc, char *argv[]) {
+    QApplication app(argc, argv);
 
-int main(int argc, char *argv[])
-{
+    // Загружаем каталог звезд
+    StarCatalog catalog("Catalogue.csv");
 
-    ifstream iFile;
-    string line1 = "", line2 = "", first = "", sec = "";
-    int location = 0;
-    iFile.open("Catalogue.csv");
-    getline(iFile, line1);
-    getline(iFile, line2);
-    
-    location = line2.find(',');
-    first = line2.substr(0,location);
-    sec = line2.substr(location + 1, line2.length());
-    cout << first << sec << endl;
+    // Параметры наблюдателя
+    double observer_ra = 1.7421845947129944;  // восхождения наблюдателя (в радианах)
+    double observer_dec = -0.3832227200588656; // склонения наблюдателя (в радианах)
 
+    // Поле зрения камеры (в градусах)
+    double fovX = 58.0;
+    double fovY = 47.0;
 
-    // Инициализация приложения Qt
-    //QApplication a(argc, argv);
-    //MainWindow w;
-    //w.show();
-    return 0;
+    // Получаем звезды, которые видны наблюдателю
+    auto stars = catalog.getVisibleStars(observer_ra, observer_dec);
+
+    // Преобразуем их в стереографическую проекцию
+    auto [x, y] = catalog.stereographicProjection(stars, observer_ra, observer_dec, fovX, fovY);
+
+    // Создаем виджет для отображения звезд
+    StarMapWidget widget(x, y);
+    widget.resize(1280, 1038);
+    widget.show();
+
+    return app.exec();
 }

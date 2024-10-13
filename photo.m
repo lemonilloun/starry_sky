@@ -40,7 +40,7 @@ for q = 1 : 1 : N
     AngleY = (FoV(2) / 2) * pi / 180; % угол от центра кадра до верхней (нижней) границы кадра
     x = cos(H(H>=0)).*sin(A(H>=0))./sin(H(H>=0)); % ksi % выборка звезд, лежащих выше плоскости горизонта
     y = (-cos(H(H>=0)).*cos(A(H>=0)))./sin(H(H>=0)); % eta % выборка звезд, лежащих выше плоскости горизонта
-
+    
     % Нахождение координат ksi и eta границ кадра
     lx = abs((sin(pi/2+AngleX)*cos(pi/2)-cos(pi/2+AngleX).*sin(pi/2).*cos(0-0))./(sin(pi/2)*sin(pi/2+AngleX)+cos(pi/2+AngleX).*cos(pi/2).*cos(0-0)));
     ly = abs((sin(pi/2+AngleY)*cos(pi/2)-cos(pi/2+AngleY).*sin(pi/2).*cos(0-0))./(sin(pi/2)*sin(pi/2+AngleY)+cos(pi/2+AngleY).*cos(pi/2).*cos(0-0)));

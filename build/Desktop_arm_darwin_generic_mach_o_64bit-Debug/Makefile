@@ -64,6 +64,7 @@ OBJECTS       = StarCatalog.o \
 		moc_StarMapWidget.o \
 		moc_mainwindow.o
 DIST          = ../../Catalogue.csv \
+		../../Catalogue_clean.csv \
 		/opt/homebrew/share/qt/mkspecs/features/spec_pre.prf \
 		/opt/homebrew/share/qt/mkspecs/features/device_config.prf \
 		/opt/homebrew/Cellar/qt/6.7.2/share/qt/mkspecs/common/unix.conf \

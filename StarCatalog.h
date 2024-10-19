@@ -7,10 +7,15 @@
 
 // Структура для представления информации о звезде
 struct Star {
-    double id;
-    double ra;  // Прямое восхождение (в радианах)
-    double dec; // Склонение (в радианах)
-    double magnitude; // Звездная величина
+    double id;          // Идентификатор звезды
+    double ra;          // Прямое восхождение (в радианах)
+    double dec;         // Склонение (в радианах)
+    double magnitude;   // Звездная величина
+    double colorIndex;  // Индекс цвета (можно игнорировать, если не используется)
+
+    // Горизонтальные координаты
+    double altitude;    // Высота
+    double azimuth;     // Азимут
 };
 
 // Класс для работы с каталогом звезд
@@ -20,13 +25,11 @@ public:
     StarCatalog(const std::string& filename);
 
     // Метод для получения звезд, видимых наблюдателю с заданными координатами
-    std::vector<Star> getVisibleStars(double observerRA, double observerDec) const;
+    std::vector<Star> getVisibleStars(double observerRA, double observerDec, double maxMagnitude);
 
     // Метод для преобразования видимых звезд в стереографическую проекцию с учетом поля зрения (FoV)
     std::pair<std::vector<double>, std::vector<double>> stereographicProjection(
         const std::vector<Star>& stars,
-        double observerRA,
-        double observerDec,
         double fovX,
         double fovY
         ) const;

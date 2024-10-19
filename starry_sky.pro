@@ -24,7 +24,8 @@ FORMS += \
 
 # Каталог данных
 DISTFILES += \
-    Catalogue.csv
+    Catalogue.csv \
+    Catalogue_clean.csv
 
 # Устанавливаем пути для QNX/Unix
 qnx: target.path = /tmp/$${TARGET}/bin

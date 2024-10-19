@@ -30,8 +30,14 @@ int main(int argc, char *argv[]) {
     // Преобразуем их в стереографическую проекцию и проверяем, сколько звезд попадает в поле зрения
     auto [x, y] = catalog.stereographicProjection(visibleStars, fovX, fovY);
 
+    std::vector<double> colorIndices;
+    colorIndices.reserve(visibleStars.size());
+    for (const auto& star : visibleStars) {
+        colorIndices.push_back(star.colorIndex);  // Предполагается, что в структуре
+    }
+
     // Создаем виджет для отображения звезд
-    StarMapWidget widget(x, y);
+    StarMapWidget widget(x, y, colorIndices);
     widget.resize(1280, 1038);
     widget.show();
 

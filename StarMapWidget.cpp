@@ -1,5 +1,6 @@
 #include "StarMapWidget.h"
 #include <QPainter>
+#include <QImage>
 
 StarMapWidget::StarMapWidget(const std::vector<double>& xCoords,
                              const std::vector<double>& yCoords,
@@ -8,34 +9,34 @@ StarMapWidget::StarMapWidget(const std::vector<double>& xCoords,
     : QWidget(parent)
     , xCoords(xCoords)
     , yCoords(yCoords)
-    , colorIndices(colorIndices) {}
+    , colorIndices(colorIndices)
+{
+    // Создаем изображение для рисования звездного неба (черно-белое изображение)
+    starMapImage = QImage(1280, 1024, QImage::Format_Grayscale8);
+    starMapImage.fill(Qt::black);  // Черный фон
 
-QColor StarMapWidget::getStarColor(double bv) const {
-    if (bv < 0.0) {
-        return QColor(0, 0, 255);      // blue - Горячие звезды
-    } else if (bv >= 0.0 && bv < 0.5) {
-        return QColor(173, 216, 230);  // lightblue - Светло-голубой
-    } else if (bv >= 0.5 && bv < 1.0) {
-        return QColor(255, 255, 0);    // yellow - Желтый
-    } else if (bv >= 1.0 && bv < 1.5) {
-        return QColor(255, 165, 0);    // orange - Оранжевый
-    } else {
-        return QColor(255, 0, 0);      // red - Холодные звезды
+    // Рисуем изображение звездного неба
+    renderStars();
+}
+
+void StarMapWidget::renderStars() {
+    QPainter painter(&starMapImage);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    for (size_t i = 0; i < xCoords.size(); ++i) {
+        // Преобразуем координаты в экранные для QImage
+        double screenX = starMapImage.width() / 2 + xCoords[i] * starMapImage.width() / 2;
+        double screenY = starMapImage.height() / 2 - yCoords[i] * starMapImage.height() / 2;
+
+        QColor starColor = QColor(255, 255, 255);  // Белый цвет для звезд
+        painter.setPen(starColor);
+        painter.setBrush(starColor);
+        painter.drawEllipse(QPointF(screenX, screenY), 2, 2);  // Размер звезды 2x2 пикселя
     }
 }
 
-void StarMapWidget::paintEvent(QPaintEvent* event) {
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.fillRect(rect(), Qt::black);  // Черный фон
 
-    for (size_t i = 0; i < xCoords.size(); ++i) {
-        double screenX = width() / 2 + xCoords[i] * width() / 2;
-        double screenY = height() / 2 - yCoords[i] * height() / 2;
-
-        QColor starColor = QColor(255, 255, 255);
-        painter.setPen(starColor);
-        painter.setBrush(starColor);
-        painter.drawEllipse(QPointF(screenX, screenY), 2, 2);
-    }
+void StarMapWidget::paintEvent(QPaintEvent* /* event */) {
+    QPainter widgetPainter(this);
+    widgetPainter.drawImage(rect(), starMapImage);  // Отображаем сохраненное изображение
 }

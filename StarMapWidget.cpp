@@ -1,4 +1,5 @@
 #include "StarMapWidget.h"
+#include "GaussianBlur.h"  // Подключаем заголовочный файл GaussianBlur
 #include <QPainter>
 #include <QImage>
 
@@ -17,6 +18,9 @@ StarMapWidget::StarMapWidget(const std::vector<double>& xCoords,
 
     // Рисуем изображение звездного неба
     renderStars();
+
+    // Применяем фильтр Гаусса к изображению звездного неба
+    blurredImage = GaussianBlur::applyGaussianBlur(starMapImage, 5, 3.0);  // Пример параметров: размер ядра, sigma
 }
 
 void StarMapWidget::renderStars() {
@@ -35,8 +39,8 @@ void StarMapWidget::renderStars() {
     }
 }
 
-
 void StarMapWidget::paintEvent(QPaintEvent* /* event */) {
     QPainter widgetPainter(this);
-    widgetPainter.drawImage(rect(), starMapImage);  // Отображаем сохраненное изображение
+    // Отображаем изображение с эффектом размытия
+    widgetPainter.drawImage(rect(), blurredImage);
 }

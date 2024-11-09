@@ -52,12 +52,14 @@ OBJECTS_DIR   = ./
 
 ####### Files
 
-SOURCES       = ../../StarCatalog.cpp \
+SOURCES       = ../../GaussianBlur.cpp \
+		../../StarCatalog.cpp \
 		../../StarMapWidget.cpp \
 		../../main.cpp \
 		../../mainwindow.cpp moc_StarMapWidget.cpp \
 		moc_mainwindow.cpp
-OBJECTS       = StarCatalog.o \
+OBJECTS       = GaussianBlur.o \
+		StarCatalog.o \
 		StarMapWidget.o \
 		main.o \
 		mainwindow.o \
@@ -409,10 +411,12 @@ DIST          = ../../Catalogue.csv \
 		/opt/homebrew/share/qt/mkspecs/features/exceptions.prf \
 		/opt/homebrew/share/qt/mkspecs/features/yacc.prf \
 		/opt/homebrew/share/qt/mkspecs/features/lex.prf \
-		../../../../starry_sky.pro ../../StarCatalog.h \
+		../../../../starry_sky.pro ../../GaussianBlur.h \
+		../../StarCatalog.h \
 		../../StarMapWidget.h \
 		../../StarMapWidget.h \
-		../../mainwindow.h ../../StarCatalog.cpp \
+		../../mainwindow.h ../../GaussianBlur.cpp \
+		../../StarCatalog.cpp \
 		../../StarMapWidget.cpp \
 		../../main.cpp \
 		../../mainwindow.cpp
@@ -1162,8 +1166,8 @@ distdir: FORCE
 	@test -d $(DISTDIR) || mkdir -p $(DISTDIR)
 	$(COPY_FILE) --parents $(DIST) $(DISTDIR)/
 	$(COPY_FILE) --parents /opt/homebrew/share/qt/mkspecs/features/data/dummy.cpp $(DISTDIR)/
-	$(COPY_FILE) --parents ../../StarCatalog.h ../../StarMapWidget.h ../../StarMapWidget.h ../../mainwindow.h $(DISTDIR)/
-	$(COPY_FILE) --parents ../../StarCatalog.cpp ../../StarMapWidget.cpp ../../main.cpp ../../mainwindow.cpp $(DISTDIR)/
+	$(COPY_FILE) --parents ../../GaussianBlur.h ../../StarCatalog.h ../../StarMapWidget.h ../../StarMapWidget.h ../../mainwindow.h $(DISTDIR)/
+	$(COPY_FILE) --parents ../../GaussianBlur.cpp ../../StarCatalog.cpp ../../StarMapWidget.cpp ../../main.cpp ../../mainwindow.cpp $(DISTDIR)/
 	$(COPY_FILE) --parents ../../mainwindow.ui $(DISTDIR)/
 
 
@@ -1205,6 +1209,8 @@ compiler_moc_header_clean:
 moc_StarMapWidget.cpp: ../../StarMapWidget.h \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/QWidget \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/qwidget.h \
+		/opt/homebrew/lib/QtGui.framework/Headers/QImage \
+		/opt/homebrew/lib/QtGui.framework/Headers/qimage.h \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
 	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/lehacho/starry_sky/build/Desktop_arm_darwin_generic_mach_o_64bit-Debug/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/lehacho/starry_sky -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/15.0.0/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../StarMapWidget.h -o moc_StarMapWidget.cpp
@@ -1212,6 +1218,8 @@ moc_StarMapWidget.cpp: ../../StarMapWidget.h \
 moc_StarMapWidget.cpp: ../../StarMapWidget.h \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/QWidget \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/qwidget.h \
+		/opt/homebrew/lib/QtGui.framework/Headers/QImage \
+		/opt/homebrew/lib/QtGui.framework/Headers/qimage.h \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
 	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/lehacho/starry_sky/build/Desktop_arm_darwin_generic_mach_o_64bit-Debug/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/lehacho/starry_sky -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/15.0.0/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../StarMapWidget.h -o moc_StarMapWidget.cpp
@@ -1246,12 +1254,19 @@ compiler_clean: compiler_moc_predefs_clean compiler_moc_header_clean compiler_ui
 
 ####### Compile
 
+GaussianBlur.o: ../../GaussianBlur.cpp /opt/homebrew/lib/QtGui.framework/Headers/QImage \
+		/opt/homebrew/lib/QtGui.framework/Headers/qimage.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o GaussianBlur.o ../../GaussianBlur.cpp
+
 StarCatalog.o: ../../StarCatalog.cpp ../../StarCatalog.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o StarCatalog.o ../../StarCatalog.cpp
 
 StarMapWidget.o: ../../StarMapWidget.cpp ../../StarMapWidget.h \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/QWidget \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/qwidget.h \
+		/opt/homebrew/lib/QtGui.framework/Headers/QImage \
+		/opt/homebrew/lib/QtGui.framework/Headers/qimage.h \
+		../../GaussianBlur.h \
 		/opt/homebrew/lib/QtGui.framework/Headers/QPainter \
 		/opt/homebrew/lib/QtGui.framework/Headers/qpainter.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o StarMapWidget.o ../../StarMapWidget.cpp
@@ -1261,6 +1276,8 @@ main.o: ../../main.cpp /opt/homebrew/lib/QtWidgets.framework/Headers/QApplicatio
 		../../StarMapWidget.h \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/QWidget \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/qwidget.h \
+		/opt/homebrew/lib/QtGui.framework/Headers/QImage \
+		/opt/homebrew/lib/QtGui.framework/Headers/qimage.h \
 		../../StarCatalog.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o main.o ../../main.cpp
 

@@ -17,16 +17,12 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
-    // Метод для рендеринга звезд на изображении
     void renderStars();
-
-    // Хранение звездного неба в виде изображения
-    QImage starMapImage;
-
-    // Координаты и цветовые индексы звезд
+    QImage starMapImage;    // Изображение для хранения исходного звездного неба
+    QImage blurredImage;    // Изображение для хранения размытого звездного неба
     std::vector<double> xCoords;
-    std::vector<double> yCoords;
     std::vector<double> colorIndices;
+    std::vector<double> yCoords;
 };
 
 #endif // STARMAPWIDGET_H

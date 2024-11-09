@@ -33,7 +33,7 @@ void StarMapWidget::paintEvent(QPaintEvent* event) {
         double screenX = width() / 2 + xCoords[i] * width() / 2;
         double screenY = height() / 2 - yCoords[i] * height() / 2;
 
-        QColor starColor = getStarColor(colorIndices[i]);
+        QColor starColor = QColor(255, 255, 255);
         painter.setPen(starColor);
         painter.setBrush(starColor);
         painter.drawEllipse(QPointF(screenX, screenY), 2, 2);

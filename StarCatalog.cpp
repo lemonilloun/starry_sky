@@ -55,9 +55,9 @@ void StarCatalog::loadFromFile(const std::string& filename) {
         stars.push_back(star);  // Добавляем звезду в список
 
         // Печатаем информацию о считанной звезде для отладки
-        if (lineNumber <= 10) {  // Например, выводим первые 10 звезд
-            std::cout << "Star " << lineNumber << ": RA = " << star.ra << ", Dec = " << star.dec << ", Mag = " << star.magnitude << std::endl;
-        }
+        //if (lineNumber <= 10) {  // Например, выводим первые 10 звезд
+        //    std::cout << "Star " << lineNumber << ": RA = " << star.ra << ", Dec = " << star.dec << ", Mag = " << star.magnitude << std::endl;
+        //}
 
         lineNumber++;
     }

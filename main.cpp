@@ -10,9 +10,8 @@ int main(int argc, char *argv[]) {
     StarCatalog catalog("/Users/lehacho/starry_sky/Catalogue_clean.csv");
 
     // Параметры наблюдателя
-    double observer_ra = 1.7421845947129944
-;  // Пример восхождения наблюдателя (в радианах)
-    double observer_dec = -0.3832227200588656; // Пример склонения наблюдателя (в радианах)
+    double observer_ra = 1.7421845947129944;  //восхождения наблюдателя (в радианах)
+    double observer_dec = -0.3832227200588656; // склонения наблюдателя (в радианах)
 
     // Максимальная видимая звездная величина
     double maxMagnitude = 3.8;  // Например, ограничение для видимых звезд

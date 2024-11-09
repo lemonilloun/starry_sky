@@ -1,17 +1,6 @@
-#include <QImage>
+#include "GaussianBlur.h"
 #include <cmath>
-#include <vector>
-
-class GaussianBlur {
-public:
-    // Применение фильтра Гаусса к изображению
-    static QImage applyGaussianBlur(const QImage& image, int kernelSize, double sigma);
-
-private:
-    static std::vector<std::vector<double>> createGaussianKernel(int kernelSize, double sigma);
-    static double gaussian(int x, int y, double sigma);
-    static QImage toGrayscale(const QImage& image);
-};
+#include <algorithm>
 
 // Преобразование изображения в оттенки серого
 QImage GaussianBlur::toGrayscale(const QImage& image) {
@@ -20,15 +9,15 @@ QImage GaussianBlur::toGrayscale(const QImage& image) {
 }
 
 // Генерация ядра Гаусса
-std::vector<std::vector<double>> GaussianBlur::createGaussianKernel(int kernelSize, double sigma) {
+std::vector<std::vector<double>> GaussianBlur::createGaussianKernel(int kernelSize, double sigmaX, double sigmaY, double rho, double mX, double mY) {
     std::vector<std::vector<double>> kernel(kernelSize, std::vector<double>(kernelSize));
     int halfSize = kernelSize / 2;
     double sum = 0.0;
 
-    // Заполняем ядро значениями Гаусса
+    // Заполняем ядро значениями функции Гаусса
     for (int y = -halfSize; y <= halfSize; y++) {
         for (int x = -halfSize; x <= halfSize; x++) {
-            double value = gaussian(x, y, sigma);
+            double value = gaussian(x, y, sigmaX, sigmaY, rho, mX, mY);
             kernel[y + halfSize][x + halfSize] = value;
             sum += value;
         }
@@ -44,19 +33,32 @@ std::vector<std::vector<double>> GaussianBlur::createGaussianKernel(int kernelSi
     return kernel;
 }
 
-// Вычисление значения Гаусса
-double GaussianBlur::gaussian(int x, int y, double sigma) {
-    return (1 / (2 * M_PI * sigma * sigma)) * std::exp(-(x * x + y * y) / (2 * sigma * sigma));
+// Вычисление значения двумерной функции Гаусса
+double GaussianBlur::gaussian(int x, int y, double sigmaX, double sigmaY, double rho, double mX, double mY) {
+    // Константа нормализации
+    double C = 1.0 / (2 * M_PI * sigmaX * sigmaY * std::sqrt(1 - rho * rho));
+
+    // Центральная часть выражения, зависящая от x, y, mX, mY, sigmaX, sigmaY, rho
+    double dx = x - mX;
+    double dy = y - mY;
+
+    double exponent = -1.0 / (2 * (1 - rho * rho)) * (
+                          (dx * dx) / (sigmaX * sigmaX) -
+                          2 * rho * (dx * dy) / (sigmaX * sigmaY) +
+                          (dy * dy) / (sigmaY * sigmaY)
+                          );
+
+    return C * std::exp(exponent);
 }
 
-// Применение свертки с ядром Гаусса
-QImage GaussianBlur::applyGaussianBlur(const QImage& image, int kernelSize, double sigma) {
+// Применение фильтра Гаусса к изображению
+QImage GaussianBlur::applyGaussianBlur(const QImage& image, int kernelSize, double sigmaX, double sigmaY, double rho, double mX, double mY) {
     QImage grayscaleImage = toGrayscale(image);  // Перевод в черно-белое изображение
     int width = grayscaleImage.width();
     int height = grayscaleImage.height();
     QImage resultImage(width, height, QImage::Format_Grayscale8);
 
-    auto kernel = createGaussianKernel(kernelSize, sigma);
+    auto kernel = createGaussianKernel(kernelSize, sigmaX, sigmaY, rho, mX, mY);
     int halfSize = kernelSize / 2;
 
     for (int y = 0; y < height; y++) {

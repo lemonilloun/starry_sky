@@ -53,12 +53,14 @@ OBJECTS_DIR   = ./
 ####### Files
 
 SOURCES       = ../../GaussianBlur.cpp \
+		../../LightPollution.cpp \
 		../../StarCatalog.cpp \
 		../../StarMapWidget.cpp \
 		../../main.cpp \
 		../../mainwindow.cpp moc_StarMapWidget.cpp \
 		moc_mainwindow.cpp
 OBJECTS       = GaussianBlur.o \
+		LightPollution.o \
 		StarCatalog.o \
 		StarMapWidget.o \
 		main.o \
@@ -412,10 +414,12 @@ DIST          = ../../Catalogue.csv \
 		/opt/homebrew/share/qt/mkspecs/features/yacc.prf \
 		/opt/homebrew/share/qt/mkspecs/features/lex.prf \
 		../../../../starry_sky.pro ../../GaussianBlur.h \
+		../../LightPollution.h \
 		../../StarCatalog.h \
 		../../StarMapWidget.h \
 		../../StarMapWidget.h \
 		../../mainwindow.h ../../GaussianBlur.cpp \
+		../../LightPollution.cpp \
 		../../StarCatalog.cpp \
 		../../StarMapWidget.cpp \
 		../../main.cpp \
@@ -1166,8 +1170,8 @@ distdir: FORCE
 	@test -d $(DISTDIR) || mkdir -p $(DISTDIR)
 	$(COPY_FILE) --parents $(DIST) $(DISTDIR)/
 	$(COPY_FILE) --parents /opt/homebrew/share/qt/mkspecs/features/data/dummy.cpp $(DISTDIR)/
-	$(COPY_FILE) --parents ../../GaussianBlur.h ../../StarCatalog.h ../../StarMapWidget.h ../../StarMapWidget.h ../../mainwindow.h $(DISTDIR)/
-	$(COPY_FILE) --parents ../../GaussianBlur.cpp ../../StarCatalog.cpp ../../StarMapWidget.cpp ../../main.cpp ../../mainwindow.cpp $(DISTDIR)/
+	$(COPY_FILE) --parents ../../GaussianBlur.h ../../LightPollution.h ../../StarCatalog.h ../../StarMapWidget.h ../../StarMapWidget.h ../../mainwindow.h $(DISTDIR)/
+	$(COPY_FILE) --parents ../../GaussianBlur.cpp ../../LightPollution.cpp ../../StarCatalog.cpp ../../StarMapWidget.cpp ../../main.cpp ../../mainwindow.cpp $(DISTDIR)/
 	$(COPY_FILE) --parents ../../mainwindow.ui $(DISTDIR)/
 
 
@@ -1254,9 +1258,15 @@ compiler_clean: compiler_moc_predefs_clean compiler_moc_header_clean compiler_ui
 
 ####### Compile
 
-GaussianBlur.o: ../../GaussianBlur.cpp /opt/homebrew/lib/QtGui.framework/Headers/QImage \
+GaussianBlur.o: ../../GaussianBlur.cpp ../../GaussianBlur.h \
+		/opt/homebrew/lib/QtGui.framework/Headers/QImage \
 		/opt/homebrew/lib/QtGui.framework/Headers/qimage.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o GaussianBlur.o ../../GaussianBlur.cpp
+
+LightPollution.o: ../../LightPollution.cpp ../../LightPollution.h \
+		/opt/homebrew/lib/QtGui.framework/Headers/QImage \
+		/opt/homebrew/lib/QtGui.framework/Headers/qimage.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o LightPollution.o ../../LightPollution.cpp
 
 StarCatalog.o: ../../StarCatalog.cpp ../../StarCatalog.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o StarCatalog.o ../../StarCatalog.cpp
@@ -1267,6 +1277,7 @@ StarMapWidget.o: ../../StarMapWidget.cpp ../../StarMapWidget.h \
 		/opt/homebrew/lib/QtGui.framework/Headers/QImage \
 		/opt/homebrew/lib/QtGui.framework/Headers/qimage.h \
 		../../GaussianBlur.h \
+		../../LightPollution.h \
 		/opt/homebrew/lib/QtGui.framework/Headers/QPainter \
 		/opt/homebrew/lib/QtGui.framework/Headers/qpainter.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o StarMapWidget.o ../../StarMapWidget.cpp

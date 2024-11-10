@@ -7,6 +7,7 @@ CONFIG += c++17
 # Источники
 SOURCES += \
     GaussianBlur.cpp \
+    LightPollution.cpp \
     StarCatalog.cpp \
     StarMapWidget.cpp \
     main.cpp \
@@ -15,6 +16,7 @@ SOURCES += \
 # Заголовки
 HEADERS += \
     GaussianBlur.h \
+    LightPollution.h \
     StarCatalog.h \
     StarMapWidget.h \
     StarMapWidget.h \  # Добавляем заголовок для виджета карты звезд

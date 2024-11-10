@@ -1,0 +1,6 @@
+.vscode/
+_pycache_/
+build/
+main.dsYM/
+.DS_Store
+

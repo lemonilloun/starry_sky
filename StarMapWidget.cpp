@@ -22,7 +22,7 @@ StarMapWidget::StarMapWidget(const std::vector<double>& xCoords,
 
     // Применяем фильтр Гаусса к изображению звездного неба
     blurredImage = GaussianBlur::applyGaussianBlur(starMapImage, 13, 2.0, 2.0, 0.99);  // гипперпараметры: размер ядра, sigmaX, sigmaY, rho
-    blurredImage = LightPollution::applyLightPollution(blurredImage, 0.09, 2.0);       // гипперпараметры: intensity, gradientFactor
+    blurredImage = LightPollution::applyLightPollution(blurredImage, 0.0, 0.8);       // гипперпараметры: intensity, gradientFactor
 }
 
 void StarMapWidget::renderStars() {

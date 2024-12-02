@@ -210,12 +210,12 @@
      <rect>
       <x>340</x>
       <y>230</y>
-      <width>251</width>
+      <width>281</width>
       <height>16</height>
      </rect>
     </property>
     <property name="text">
-     <string>Hipparcos (Aug 8, 1989 – Aug 15, 1993)</string>
+     <string>Hipparcos (118 218 звезд на эпоху 1991,25)</string>
     </property>
    </widget>
    <widget class="Line" name="line_2">

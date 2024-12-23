@@ -1,0 +1,7 @@
+.vscode/
+_pycache_/
+build/
+main.dsYM/
+.DS_Store
+src/starry_sky.pro.user
+src/.DS_Store

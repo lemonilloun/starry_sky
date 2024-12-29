@@ -10,7 +10,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    , catalog(std::make_unique<StarCatalog>("/Users/lehacho/starry_sky/Catalogue_clean.csv"))
+    , catalog(std::make_unique<StarCatalog>("/Users/lehacho/starry_sky/src/data/Catalogue_clean.csv"))
 {
     ui->setupUi(this);
 

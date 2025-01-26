@@ -129,7 +129,7 @@ std::vector<Star> StarCatalog::getVisibleStars(double observerRA, double observe
     return visibleStars;
 }
 
-// Стереографическая проекция с учетом углового поля зрения (FoV)
+// Проекция в прямоугольные координаты с учетом углового поля зрения (FoV)
 std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicProjection(
     const std::vector<Star>& stars,
     double fovX,
@@ -170,6 +170,20 @@ std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicPr
     }
 
     std::cout << "количество звезд, попавших в поле зрения: " << starsInFov << std::endl;
+
+    // Ширина и высота виджета
+    constexpr double widgetWidth = 1280.0;
+    constexpr double widgetHeight = 1024.0;
+
+    // Масштабирование координат
+    double scaleX = 0.7 / (lx);  // Масштаб по ширине
+    double scaleY = 0.7 / (ly); // Масштаб по высоте
+
+    // Применяем масштабирование к координатам
+    for (size_t i = 0; i < x.size(); ++i) {
+        x[i] = (x[i] * scaleX);  // Пропорциональное масштабирование и сдвиг в центр
+        y[i] = (y[i] * scaleY); // Пропорциональное масштабирование и сдвиг в центр
+    }
 
     return {x, y};
 }

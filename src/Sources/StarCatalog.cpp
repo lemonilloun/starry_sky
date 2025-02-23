@@ -175,15 +175,14 @@ std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicPr
     constexpr double widgetWidth = 1280.0;
     constexpr double widgetHeight = 1024.0;
 
-    // Масштабирование координат
-    double scaleX = 0.7 / (lx);  // Масштаб по ширине
-    double scaleY = 0.7 / (ly); // Масштаб по высоте
+    // Масштабирование координат для соответствия размеру виджета
+    double scaleX = 1.0 / lx;  // Нормализуем координаты по X
+    double scaleY = 1.0 / ly;  // Нормализуем координаты по Y
 
     // Применяем масштабирование к координатам
     for (size_t i = 0; i < x.size(); ++i) {
-        x[i] = (x[i] * scaleX);  // Пропорциональное масштабирование и сдвиг в центр
-        y[i] = (y[i] * scaleY); // Пропорциональное масштабирование и сдвиг в центр
+        x[i] *= scaleX; // Масштабируем по ширине
+        y[i] *= scaleY; // Масштабируем по высоте
     }
-
     return {x, y};
 }

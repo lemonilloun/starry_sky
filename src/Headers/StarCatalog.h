@@ -14,15 +14,15 @@ struct Star {
     double colorIndex;  // Индекс цвета (можно игнорировать, если не используется)
 
     // Горизонтальные координаты
-    double altitude;    // Высота
-    double azimuth;     // Азимут
+    double altitude;    // Высота (altitude)
+    double azimuth;     // Азимут (azimuth)
 };
 
 // Класс для работы с каталогом звезд
 class StarCatalog {
 public:
     // Конструктор, принимающий имя файла CSV для загрузки данных
-    StarCatalog(const std::string& filename);
+    explicit StarCatalog(const std::string& filename);
 
     // Метод для получения звезд, видимых наблюдателю с заданными координатами
     std::vector<Star> getVisibleStars(double observerRA, double observerDec, double maxMagnitude);
@@ -33,6 +33,10 @@ public:
         double fovX,
         double fovY
         ) const;
+
+    // Статический метод для корректировки центра проекции по углам поворота датчика (тангаж, крен, рысканье).
+    // Возвращает новую высоту (altitude) и азимут (azimuth) центра.
+    static std::pair<double, double> adjustProjectionCenter(double theta, double psi, double phi);
 
 private:
     // Вектор для хранения данных о звездах из каталога

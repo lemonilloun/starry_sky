@@ -129,39 +129,134 @@ std::vector<Star> StarCatalog::getVisibleStars(double observerRA, double observe
     return visibleStars;
 }
 
-// Проекция в прямоугольные координаты с учетом углового поля зрения (FoV)
+std::pair<double, double> StarCatalog::adjustProjectionCenter(double theta, double psi, double phi) {
+    // Исходный центр проекции в горизонтальной системе:
+    // A0 = 0, z0 = π/2. В декартовой системе (при r = 1):
+    // x_c = sin(z0)*sin(A0) = 0,
+    // y_c = sin(z0)*cos(A0) = 1,
+    // z_c = cos(z0) = 0.
+    double xc = 0.0, yc = 1.0, zc = 0.0;
+
+    // Матрица поворота вокруг оси Ox (тангаж)
+    double cosTheta = std::cos(theta), sinTheta = std::sin(theta);
+    double R_x[3][3] = {
+        {1, 0, 0},
+        {0, cosTheta, -sinTheta},
+        {0, sinTheta, cosTheta}
+    };
+
+    // Матрица поворота вокруг оси Oy (крен)
+    double cosPsi = std::cos(psi), sinPsi = std::sin(psi);
+    double R_y[3][3] = {
+        {cosPsi, 0, sinPsi},
+        {0, 1, 0},
+        {-sinPsi, 0, cosPsi}
+    };
+
+    // Матрица поворота вокруг оси Oz (рысканье)
+    double cosPhi = std::cos(phi), sinPhi = std::sin(phi);
+    double R_z[3][3] = {
+        {cosPhi, -sinPhi, 0},
+        {sinPhi, cosPhi, 0},
+        {0, 0, 1}
+    };
+
+    // Сначала вычисляем M = R_y * R_x
+    double M[3][3] = {0};
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            M[i][j] = 0.0;
+            for (int k = 0; k < 3; k++) {
+                M[i][j] += R_y[i][k] * R_x[k][j];
+            }
+        }
+    }
+
+    // Итоговая матрица R = R_z * M = R_z * (R_y * R_x)
+    double R[3][3] = {0};
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            R[i][j] = 0.0;
+            for (int k = 0; k < 3; k++) {
+                R[i][j] += R_z[i][k] * M[k][j];
+            }
+        }
+    }
+
+    // Применяем матрицу R к вектору центра [xc, yc, zc]^T
+    double x_cd = R[0][0] * xc + R[0][1] * yc + R[0][2] * zc;
+    double y_cd = R[1][0] * xc + R[1][1] * yc + R[1][2] * zc;
+    double z_cd = R[2][0] * xc + R[2][1] * yc + R[2][2] * zc;
+
+    // Обратное преобразование в сферические координаты:
+    // Интерпретируем ось Y как вертикальную:
+    double newAltitude = std::asin(y_cd);           // При (0,1,0): arcsin(1) = π/2.
+    double newAzimuth = std::atan2(x_cd, z_cd);       // Если (x_cd, z_cd) = (0,0), можно задать 0 по умолчанию.
+
+    // Если x_cd и z_cd одновременно близки к нулю, установим азимут в 0
+    if (std::abs(x_cd) < 1e-9 && std::abs(z_cd) < 1e-9) {
+        newAzimuth = 0.0;
+    }
+
+    return {newAltitude, newAzimuth};
+}
+
 std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicProjection(
     const std::vector<Star>& stars,
     double fovX,
     double fovY
-    ) const {
+    ) const
+{
     std::vector<double> x, y;
 
-    // Углы обзора по X и Y в радианах
-    double angleX = (fovX / 2) * M_PI / 180;
-    double angleY = (fovY / 2) * M_PI / 180;
+    // Поворот датчика (theta, psi, phi) -> центр проекции (centerAlt, centerAz)
+    double theta = 0.1;
+    double psi   = 0.5;
+    double phi   = 0.0;
+    auto [centerAlt, centerAz] = StarCatalog::adjustProjectionCenter(theta, psi, phi);
 
-    // Расчет границ кадра lx и ly
-    double lx = std::abs((sin(M_PI / 2 + angleX) * cos(M_PI / 2) - cos(M_PI / 2 + angleX) * sin(M_PI / 2) * cos(0)) /
-                         (sin(M_PI / 2) * sin(M_PI / 2 + angleX) + cos(M_PI / 2 + angleX) * cos(M_PI / 2) * cos(0)));
+    std::cout << "Новое значения A0: " << centerAz << std::endl;
+    std::cout << "Новое значения z0: " << centerAlt << std::endl;
 
-    double ly = std::abs((sin(M_PI / 2 + angleY) * cos(M_PI / 2) - cos(M_PI / 2 + angleY) * sin(M_PI / 2) * cos(0)) /
-                         (sin(M_PI / 2) * sin(M_PI / 2 + angleY) + cos(M_PI / 2 + angleY) * cos(M_PI / 2) * cos(0)));
+    // Теперь A0 = centerAz, z0 = pi/2 - centerAlt
+    double A0 = centerAz;
+    double z0 = centerAlt;
+    // Изначально "рабочий" центр: A0=0, z0= pi/2
 
-    std::cout << "lx: " << lx << " ly: " << ly << std::endl;
+    // Углы обзора
+    double angleX = (fovX / 2.0) * M_PI / 180.0;
+    double angleY = (fovY / 2.0) * M_PI / 180.0;
 
-    int starsInFov = 0;  // Счетчик звезд, попавших в поле зрения
+    // lx, ly - оставим как есть (пока)
+    double lx = std::abs((sin(z0 + angleX)*cos(z0) - cos(z0+angleX)*sin(z0)*cos(A0)) /
+                         (sin(z0)*sin(z0+angleX) + cos(z0+angleX)*cos(z0)*cos(A0)));
+    double ly = std::abs((sin(z0 + angleY)*cos(z0) - cos(z0+angleY)*sin(z0)*cos(A0)) /
+                         (sin(z0)*sin(z0+angleY) + cos(z0+angleY)*cos(z0)*cos(A0)));
 
-    for (const auto& star : stars) {
-        // Используем уже сохраненные горизонтальные координаты (altitude и azimuth)
-        double altitude = star.altitude;
-        double azimuth = star.azimuth;
+    int starsInFov = 0;
 
-        // Преобразуем горизонтальные координаты в стереографические
-        double ksi = cos(altitude) * sin(azimuth) / sin(altitude); // x
-        double eta = -cos(altitude) * cos(azimuth) / sin(altitude); // y
+    for (auto& star : stars) {
+        double alt = star.altitude;
+        double az  = star.azimuth;
 
-        // Проверяем, находится ли звезда в пределах границ кадра
+        // Сдвигаем на (A0, z0)
+        // Старый код "работал" при A0=0, z0= pi/2 => alt^*= alt, az^*= az
+        // Теперь alt^* = alt - ( pi/2 - z0 ) = alt + z0 - pi/2
+        // az^* = az - A0
+        double altShifted = alt + (z0 - M_PI/2.0);
+        double azShifted  = az  - A0;
+
+        // "Рабочая" формула
+        // ksi = cos( alt^* ) sin( az^* ) / sin( alt^* )
+        // eta = - cos( alt^* ) cos( az^* ) / sin( alt^* )
+        double denom = std::sin(altShifted);
+        if (std::abs(denom) < 1e-9) {
+            continue;
+        }
+        double ksi = (std::cos(altShifted) * std::sin(azShifted)) / denom;
+        double eta = -(std::cos(altShifted) * std::cos(azShifted)) / denom;
+
+        // Проверка FoV
         if (ksi >= -lx && ksi <= lx && eta >= -ly && eta <= ly) {
             x.push_back(ksi);
             y.push_back(eta);
@@ -171,18 +266,5 @@ std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicPr
 
     std::cout << "количество звезд, попавших в поле зрения: " << starsInFov << std::endl;
 
-    // Ширина и высота виджета
-    constexpr double widgetWidth = 1280.0;
-    constexpr double widgetHeight = 1024.0;
-
-    // Масштабирование координат для соответствия размеру виджета
-    double scaleX = 1.0 / lx;  // Нормализуем координаты по X
-    double scaleY = 1.0 / ly;  // Нормализуем координаты по Y
-
-    // Применяем масштабирование к координатам
-    for (size_t i = 0; i < x.size(); ++i) {
-        x[i] *= scaleX; // Масштабируем по ширине
-        y[i] *= scaleY; // Масштабируем по высоте
-    }
     return {x, y};
 }

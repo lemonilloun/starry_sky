@@ -137,7 +137,7 @@ std::pair<double, double> StarCatalog::adjustProjectionCenter(double theta, doub
     // z_c = cos(z0) = 0.
     double xc = 0.0, yc = 1.0, zc = 0.0;
 
-    // Матрица поворота вокруг оси Ox (тангаж)
+    // Матрица поворота вокруг оси Ox
     double cosTheta = std::cos(theta), sinTheta = std::sin(theta);
     double R_x[3][3] = {
         {1, 0, 0},
@@ -145,7 +145,7 @@ std::pair<double, double> StarCatalog::adjustProjectionCenter(double theta, doub
         {0, sinTheta, cosTheta}
     };
 
-    // Матрица поворота вокруг оси Oy (крен)
+    // Матрица поворота вокруг оси Oy
     double cosPsi = std::cos(psi), sinPsi = std::sin(psi);
     double R_y[3][3] = {
         {cosPsi, 0, sinPsi},
@@ -153,7 +153,7 @@ std::pair<double, double> StarCatalog::adjustProjectionCenter(double theta, doub
         {-sinPsi, 0, cosPsi}
     };
 
-    // Матрица поворота вокруг оси Oz (рысканье)
+    // Матрица поворота вокруг оси Oz
     double cosPhi = std::cos(phi), sinPhi = std::sin(phi);
     double R_z[3][3] = {
         {cosPhi, -sinPhi, 0},
@@ -210,15 +210,18 @@ std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicPr
     std::vector<double> x, y;
 
     // Поворот датчика (theta, psi, phi) -> центр проекции (centerAlt, centerAz)
-    double theta = 0.1;
-    double psi   = 0.5;
-    double phi   = 0.0;
+    double theta_deg = 1.0;
+    double psi_deg   = 1.0;
+    double phi_deg   = 5.0;
+
+    double theta = theta_deg * M_PI / 180.0;
+    double psi   = psi_deg   * M_PI / 180.0;
+    double phi   = phi_deg   * M_PI / 180.0;
     auto [centerAlt, centerAz] = StarCatalog::adjustProjectionCenter(theta, psi, phi);
 
     std::cout << "Новое значения A0: " << centerAz << std::endl;
     std::cout << "Новое значения z0: " << centerAlt << std::endl;
 
-    // Теперь A0 = centerAz, z0 = pi/2 - centerAlt
     double A0 = centerAz;
     double z0 = centerAlt;
     // Изначально "рабочий" центр: A0=0, z0= pi/2
@@ -227,7 +230,6 @@ std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicPr
     double angleX = (fovX / 2.0) * M_PI / 180.0;
     double angleY = (fovY / 2.0) * M_PI / 180.0;
 
-    // lx, ly - оставим как есть (пока)
     double lx = std::abs((sin(z0 + angleX)*cos(z0) - cos(z0+angleX)*sin(z0)*cos(A0)) /
                          (sin(z0)*sin(z0+angleX) + cos(z0+angleX)*cos(z0)*cos(A0)));
     double ly = std::abs((sin(z0 + angleY)*cos(z0) - cos(z0+angleY)*sin(z0)*cos(A0)) /
@@ -239,22 +241,20 @@ std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicPr
         double alt = star.altitude;
         double az  = star.azimuth;
 
-        // Сдвигаем на (A0, z0)
-        // Старый код "работал" при A0=0, z0= pi/2 => alt^*= alt, az^*= az
-        // Теперь alt^* = alt - ( pi/2 - z0 ) = alt + z0 - pi/2
-        // az^* = az - A0
-        double altShifted = alt + (z0 - M_PI/2.0);
-        double azShifted  = az  - A0;
+        double z = alt;
 
-        // "Рабочая" формула
-        // ksi = cos( alt^* ) sin( az^* ) / sin( alt^* )
-        // eta = - cos( alt^* ) cos( az^* ) / sin( alt^* )
-        double denom = std::sin(altShifted);
-        if (std::abs(denom) < 1e-9) {
-            continue;
-        }
-        double ksi = (std::cos(altShifted) * std::sin(azShifted)) / denom;
-        double eta = -(std::cos(altShifted) * std::cos(azShifted)) / denom;
+        double sinZ  = std::sin(z);
+        double cosZ  = std::cos(z);
+        double cotZ  = (std::fabs(sinZ) < 1e-9) ? 0.0 : (cosZ / sinZ);
+
+        double sinZ0 = std::sin(z0);
+        double cosZ0 = std::cos(z0);
+
+        double deltaA = az - A0;
+        double denom = sinZ0 + cotZ * cosZ0 * std::cos(deltaA);
+
+        double ksi = (cotZ * std::sin(deltaA)) / denom;
+        double eta = (cosZ0 - cotZ * sinZ0 * std::cos(deltaA)) / denom;
 
         // Проверка FoV
         if (ksi >= -lx && ksi <= lx && eta >= -ly && eta <= ly) {

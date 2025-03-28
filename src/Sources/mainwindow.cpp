@@ -20,6 +20,16 @@ MainWindow::MainWindow(QWidget *parent)
         ui->MapWidget->setLayout(layout);
     }
 
+    // --- Создаём QLabel с заглушкой ---
+    QLabel* placeholder = new QLabel(ui->MapWidget);
+    placeholder->setScaledContents(true);
+    placeholder->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    QPixmap pix("/Users/lehacho/starry_sky/src/data/placeholder.png");
+    placeholder->setPixmap(pix);
+
+    // Добавляем QLabel в лэйаут
+    ui->MapWidget->layout()->addWidget(placeholder);
+
     // Установка начальных значений полей
     ui->observerRaSpinBox->setValue(1.02703168676271);   // Восхождение
     ui->observerDecSpinBox->setValue(-0.00360223021825306); // Склонение

@@ -31,7 +31,10 @@ public:
     std::pair<std::vector<double>, std::vector<double>> stereographicProjection(
         const std::vector<Star>& stars,
         double fovX,
-        double fovY
+        double fovY,
+        double theta_deg,
+        double psi_deg,
+        double phi_deg
         ) const;
 
     // Статический метод для корректировки центра проекции по углам поворота датчика (тангаж, крен, рысканье).

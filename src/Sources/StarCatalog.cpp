@@ -129,74 +129,96 @@ std::vector<Star> StarCatalog::getVisibleStars(double observerRA, double observe
     return visibleStars;
 }
 
-std::pair<double, double> StarCatalog::adjustProjectionCenter(double theta, double psi, double phi) {
-    // Исходный центр проекции в горизонтальной системе:
-    // A0 = 0, z0 = π/2. В декартовой системе (при r = 1):
-    // x_c = sin(z0)*sin(A0) = 0,
-    // y_c = sin(z0)*cos(A0) = 1,
-    // z_c = cos(z0) = 0.
+std::pair<double, double> StarCatalog::adjustProjectionCenter(double theta,
+                                                              double psi,
+                                                              double phi)
+{
+    // Исходный центр проекции в горизонтальной системе (A0=0, z0=π/2),
+    // в декартовой: (x, y, z) = (0, 1, 0).
     double xc = 0.0, yc = 1.0, zc = 0.0;
 
-    // Матрица поворота вокруг оси Ox
+    // --- Матрицы поворота вокруг Ox, Oy, Oz --- //
     double cosTheta = std::cos(theta), sinTheta = std::sin(theta);
     double R_x[3][3] = {
-        {1, 0, 0},
-        {0, cosTheta, -sinTheta},
-        {0, sinTheta, cosTheta}
+        {1,         0,          0},
+        {0,  cosTheta,  -sinTheta},
+        {0,  sinTheta,   cosTheta}
     };
 
-    // Матрица поворота вокруг оси Oy
     double cosPsi = std::cos(psi), sinPsi = std::sin(psi);
     double R_y[3][3] = {
-        {cosPsi, 0, sinPsi},
-        {0, 1, 0},
-        {-sinPsi, 0, cosPsi}
+        { cosPsi,  0, sinPsi},
+        {      0,  1,     0 },
+        {-sinPsi,  0, cosPsi}
     };
 
-    // Матрица поворота вокруг оси Oz
     double cosPhi = std::cos(phi), sinPhi = std::sin(phi);
     double R_z[3][3] = {
-        {cosPhi, -sinPhi, 0},
-        {sinPhi, cosPhi, 0},
-        {0, 0, 1}
+        { cosPhi, -sinPhi, 0},
+        { sinPhi,  cosPhi, 0},
+        {      0,       0, 1}
     };
 
-    // Сначала вычисляем M = R_y * R_x
-    double M[3][3] = {0};
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            M[i][j] = 0.0;
-            for (int k = 0; k < 3; k++) {
-                M[i][j] += R_y[i][k] * R_x[k][j];
+    // --- Подсчитаем, сколько углов ненулевые --- //
+    bool isThetaNonZero = (std::fabs(theta) > 1e-12);
+    bool isPsiNonZero   = (std::fabs(psi)   > 1e-12);
+    bool isPhiNonZero   = (std::fabs(phi)   > 1e-12);
+    int  numNonZero     = (int)isThetaNonZero + (int)isPsiNonZero + (int)isPhiNonZero;
+
+    // --- Итоговую матрицу R обнулим для начала --- //
+    double R[3][3] = {{0.0, 0.0, 0.0},
+                      {0.0, 0.0, 0.0},
+                      {0.0, 0.0, 0.0}};
+
+    // --- Функция умножения матриц 3×3 --- //
+    auto matMul = [&](const double A[3][3], const double B[3][3], double C[3][3]) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                double sum = 0.0;
+                for (int k = 0; k < 3; k++) {
+                    sum += A[i][k] * B[k][j];
+                }
+                C[i][j] = sum;
             }
         }
-    }
+    };
 
-    // Итоговая матрица R = R_z * M = R_z * (R_y * R_x)
-    double R[3][3] = {0};
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            R[i][j] = 0.0;
-            for (int k = 0; k < 3; k++) {
-                R[i][j] += R_z[i][k] * M[k][j];
-            }
+    if (numNonZero == 1) {
+        // --- Случай, когда ровно один угол отличен от нуля --- //
+        if (isThetaNonZero) {
+            // R = R_x
+            std::memcpy(R, R_x, sizeof(R));
+        } else if (isPsiNonZero) {
+            // R = R_y
+            std::memcpy(R, R_y, sizeof(R));
+        } else { // isPhiNonZero
+            // R = R_z
+            std::memcpy(R, R_z, sizeof(R));
         }
+    } else {
+        // --- Случай, когда либо нет углов, либо несколько --- //
+        // Полное умножение R = R_z * R_y * R_x
+        double tmp[3][3];
+        matMul(R_y, R_x, tmp);  // M = R_y * R_x
+        matMul(R_z, tmp, R);    // R = R_z * M
     }
 
-    // Применяем матрицу R к вектору центра [xc, yc, zc]^T
+    // --- Применяем итоговое вращение R к вектору центра (xc, yc, zc) --- //
     double x_cd = R[0][0] * xc + R[0][1] * yc + R[0][2] * zc;
     double y_cd = R[1][0] * xc + R[1][1] * yc + R[1][2] * zc;
     double z_cd = R[2][0] * xc + R[2][1] * yc + R[2][2] * zc;
 
-    // Обратное преобразование в сферические координаты:
-    // Интерпретируем ось Y как вертикальную:
-    double newAltitude = std::asin(y_cd);           // При (0,1,0): arcsin(1) = π/2.
-    double newAzimuth = std::atan2(x_cd, z_cd);       // Если (x_cd, z_cd) = (0,0), можно задать 0 по умолчанию.
+    // --- Обратное преобразование в «горизонтальные» (alt, az) --- //
+    // При нашей системе Y - вверх, значит alt = arcsin(Y).
+    double newAltitude = std::asin(y_cd);
 
-    // Если x_cd и z_cd одновременно близки к нулю, установим азимут в 0
-    if (std::abs(x_cd) < 1e-9 && std::abs(z_cd) < 1e-9) {
-        newAzimuth = 0.0;
-    }
+    // az = atan2(X, Z), с проверкой на "X=Z=0"
+    //double newAzimuth = 0.0;
+    //if (std::fabs(x_cd) > 1e-12 || std::fabs(z_cd) > 1e-12) {
+    //    newAzimuth = std::atan2(x_cd, z_cd);
+    //}
+
+    double newAzimuth = std::atan2(x_cd, z_cd);
 
     return {newAltitude, newAzimuth};
 }
@@ -204,15 +226,14 @@ std::pair<double, double> StarCatalog::adjustProjectionCenter(double theta, doub
 std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicProjection(
     const std::vector<Star>& stars,
     double fovX,
-    double fovY
+    double fovY,
+    double theta_deg,
+    double psi_deg,
+    double phi_deg
     ) const
 {
     std::vector<double> x, y;
 
-    // Поворот датчика (theta, psi, phi) -> центр проекции (centerAlt, centerAz)
-    double theta_deg = 1.0;
-    double psi_deg   = 1.0;
-    double phi_deg   = 5.0;
 
     double theta = theta_deg * M_PI / 180.0;
     double psi   = psi_deg   * M_PI / 180.0;

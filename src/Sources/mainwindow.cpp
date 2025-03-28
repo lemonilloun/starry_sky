@@ -20,6 +20,9 @@ MainWindow::MainWindow(QWidget *parent)
     ui->maxMagnitudeSpinBox->setValue(3.8);             // Звездная величина
     ui->fovXSpinBox->setValue(58.0);                    // Поле зрения X
     ui->fovYSpinBox->setValue(47.0);                    // Поле зрения Y
+    ui->thetaSpinBox->setValue(0.0);
+    ui->psiSpinBox->setValue(0.0);
+    ui->phiSpinBox->setValue(0.0);
 
     // Подключаем кнопку построения карты
     connect(ui->buildMapButton, &QPushButton::clicked, this, &MainWindow::buildStarMap);
@@ -36,12 +39,15 @@ void MainWindow::buildStarMap() {
     double maxMagnitude = ui->maxMagnitudeSpinBox->value();
     double fovX = ui->fovXSpinBox->value();
     double fovY = ui->fovYSpinBox->value();
+    double theta_deg = ui->thetaSpinBox->value();
+    double psi_deg = ui->psiSpinBox->value();
+    double phi_deg = ui->phiSpinBox->value();
 
     // Получаем звезды, которые видны наблюдателю
     auto visibleStars = catalog->getVisibleStars(observer_ra, observer_dec, maxMagnitude);
 
     // Преобразуем их в стереографическую проекцию
-    auto [x, y] = catalog->stereographicProjection(visibleStars, fovX, fovY);
+    auto [x, y] = catalog->stereographicProjection(visibleStars, fovX, fovY, theta_deg, psi_deg, phi_deg);
 
     std::vector<double> magnitudes;
     std::vector<double> colorIndices;

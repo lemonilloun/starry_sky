@@ -14,6 +14,12 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    if (!ui->MapWidget->layout()) {
+        QVBoxLayout* layout = new QVBoxLayout(ui->MapWidget);
+        layout->setContentsMargins(0, 0, 0, 0);
+        ui->MapWidget->setLayout(layout);
+    }
+
     // Установка начальных значений полей
     ui->observerRaSpinBox->setValue(1.02703168676271);   // Восхождение
     ui->observerDecSpinBox->setValue(-0.00360223021825306); // Склонение
@@ -59,12 +65,24 @@ void MainWindow::buildStarMap() {
         colorIndices.push_back(star.colorIndex);
     }
 
-    // Создаем или обновляем виджет карты звездного неба
-    if (starMapWidget) {
-        delete starMapWidget; // Удаляем старый виджет
+    // 5) Удаляем старый виджет (если ранее создавали)
+    //    Чтобы не копить их, очищаем лэйаут MapWidget:
+    QLayout *mapLayout = ui->MapWidget->layout();
+    if (mapLayout) {
+        QLayoutItem *child;
+        while ((child = mapLayout->takeAt(0)) != nullptr) {
+            if (child->widget()) {
+                delete child->widget(); // Удаляем старый StarMapWidget
+            }
+            delete child;
+        }
     }
 
-    starMapWidget = new StarMapWidget(x, y, magnitudes, colorIndices);
-    starMapWidget->resize(1280, 1038);
-    starMapWidget->show();
+    // 6) Создаём новый StarMapWidget с нужными данными
+    //    Родитель = ui->MapWidget, чтобы он жил внутри.
+    StarMapWidget* mapWidget = new StarMapWidget(x, y, magnitudes, colorIndices,
+                                                 ui->MapWidget);
+
+    // 7) Добавляем его в лэйаут
+    mapLayout->addWidget(mapWidget);
 }

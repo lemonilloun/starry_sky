@@ -19,12 +19,7 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* event) override;      // Отрисовка виджета
-    void wheelEvent(QWheelEvent* event) override;      // Масштабирование колёсиком мыши
-    void resizeEvent(QResizeEvent* event) override;    // Обновление позиции кнопок при изменении размера
 
-private slots:
-    void saveImage();                  // Сохранение изображения
-    void toggleInteractiveMode();      // Переключение интерактивного режима
 
 private:
     void renderStars();                // Отрисовка звезд
@@ -33,8 +28,6 @@ private:
     QImage blurredImage;               // Размытое изображение
     QPushButton* saveButton;           // Кнопка сохранения изображения
     QPushButton* interactiveModeButton; // Кнопка включения интерактивного режима
-    bool isInteractiveMode;            // Флаг для режима интеракции
-    double scaleFactor;                // Масштаб изображения
 
     std::vector<double> xCoords;       // Координаты звезд по X
     std::vector<double> yCoords;       // Координаты звезд по Y

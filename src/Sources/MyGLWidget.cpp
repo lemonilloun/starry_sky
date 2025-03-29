@@ -1,6 +1,7 @@
 #include "MyGLWidget.h"
 #include <QDebug>
 #include <QMatrix4x4>
+#include <QPainter>
 
 MyGLWidget::MyGLWidget(QWidget* parent)
     : QOpenGLWidget(parent)
@@ -59,36 +60,42 @@ void MyGLWidget::paintGL()
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    // Вместо gluLookAt — QMatrix4x4::lookAt
+    // Матрица вида:
     QMatrix4x4 view;
-    view.lookAt(
-        QVector3D(0.f, 0.f, 5.f),  // Позиция "камеры"
-        QVector3D(0.f, 0.f, 0.f),  // Точка, куда смотрим
-        QVector3D(0.f, 1.f, 0.f)   // Вектор "вверх"
-        );
+    // Сдвигаем камеру "справа и сверху"
+    view.lookAt(QVector3D(3.0f, 2.0f, 5.0f),
+                QVector3D(0.0f, 0.0f, 0.0f),
+                QVector3D(0.0f, 1.0f, 0.0f));
     glMultMatrixf(view.constData());
 
-    // Теперь можно применять ваши повороты:
+    // Применяем повороты Rx(theta), Ry(psi), Rz(phi)
     glRotatef(float(m_phi),   0.f, 0.f, 1.f);
     glRotatef(float(m_psi),   0.f, 1.f, 0.f);
     glRotatef(float(m_theta), 1.f, 0.f, 0.f);
 
-    // Нарисуем «ось X, Y, Z» для наглядности
-    //  -- обычно рисуют линиями
+    // Рисуем оси
     glBegin(GL_LINES);
-    // Ось X (красная)
+    // X — красная
     glColor3f(1,0,0);
     glVertex3f(0,0,0); glVertex3f(2,0,0);
-    // Ось Y (зелёная)
+
+    // Y — зелёная
     glColor3f(0,1,0);
     glVertex3f(0,0,0); glVertex3f(0,2,0);
-    // Ось Z (синяя)
+
+    // Z — синяя
     glColor3f(0,0,1);
     glVertex3f(0,0,0); glVertex3f(0,0,2);
     glEnd();
 
-    // Теперь рисуем наш «датчик» (два прямоугольника)
+    // Рисуем две плоскости-«прямоугольника»
     drawSensorModel();
+
+    // Теперь выводим 2D-текст (подпись) с помощью QPainter
+    QPainter painter(this);
+    painter.setPen(Qt::white);
+    painter.drawText(10, 20, "X=red, Y=green, Z=blue");
+    painter.end();
 }
 
 void MyGLWidget::drawSensorModel()

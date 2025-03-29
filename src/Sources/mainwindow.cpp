@@ -30,6 +30,8 @@ MainWindow::MainWindow(QWidget *parent)
     // Добавляем QLabel в лэйаут
     ui->MapWidget->layout()->addWidget(placeholder);
 
+    ui->GLWidget->setAngles(10, 20, 30);
+
     // Установка начальных значений полей
     ui->observerRaSpinBox->setValue(1.02703168676271);   // Восхождение
     ui->observerDecSpinBox->setValue(-0.00360223021825306); // Склонение
@@ -42,6 +44,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Подключаем кнопку построения карты
     connect(ui->buildMapButton, &QPushButton::clicked, this, &MainWindow::buildStarMap);
+
+    connect(ui->thetaSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onAnglesChanged);
+    connect(ui->psiSpinBox,   QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onAnglesChanged);
+    connect(ui->phiSpinBox,   QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onAnglesChanged);
 }
 
 MainWindow::~MainWindow() {
@@ -95,4 +104,14 @@ void MainWindow::buildStarMap() {
 
     // 7) Добавляем его в лэйаут
     mapLayout->addWidget(mapWidget);
+}
+
+void MainWindow::onAnglesChanged()
+{
+    double theta_deg = ui->thetaSpinBox->value();
+    double psi_deg   = ui->psiSpinBox->value();
+    double phi_deg   = ui->phiSpinBox->value();
+
+    // Передаём новые углы в GLWidget:
+    ui->GLWidget->setAngles(theta_deg, psi_deg, phi_deg);
 }

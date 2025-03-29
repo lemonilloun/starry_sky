@@ -21,6 +21,7 @@ public:
 
 private slots:
     void buildStarMap(); // Построение карты звезд
+    void onAnglesChanged();
 
 private:
     Ui::MainWindow *ui;

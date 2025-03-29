@@ -422,6 +422,16 @@
      </size>
     </property>
    </widget>
+   <widget class="MyGLWidget" name="GLWidget">
+    <property name="geometry">
+     <rect>
+      <x>1099</x>
+      <y>480</y>
+      <width>271</width>
+      <height>200</height>
+     </rect>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -441,6 +451,13 @@
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>MyGLWidget</class>
+   <extends>QOpenGLWidget</extends>
+   <header location="global">MyGLWidget.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

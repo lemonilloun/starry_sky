@@ -67,225 +67,233 @@ void StarCatalog::loadFromFile(const std::string& filename) {
     }
 }
 
-// Функция для преобразования экваториальных координат в горизонтальные
-std::pair<double, double> transformation(double observerDec, double observerRA, double starRA, double starDec) {
-    double t = starRA - observerRA;
-    double z = acos(sin(starDec) * sin(observerDec) + cos(starDec) * cos(observerDec) * cos(t));
-
-    // Азимут (с учетом нулевых значений)
-    double a1 = asin(cos(starDec) * sin(t) / sin(z));
-    double a2 = acos((-sin(starDec) * cos(observerDec) + cos(starDec) * sin(observerDec) * cos(t)) / sin(z));
-    double azimuth;
-    if (a1 > 0) {
-        azimuth = a2;
-    } else if (a1 < 0) {
-        azimuth = 2 * M_PI - a2;
-    } else {
-        azimuth = 0;
-    }
-
-    // Высота светила
-    double altitude = M_PI / 2 - z;
-
-    return {altitude, azimuth};
-}
-
-// Фильтрация звезд, которые выше горизонта
-std::vector<Star> StarCatalog::getVisibleStars(double observerRA, double observerDec, double maxMagnitude) {
-    std::vector<Star> visibleStars;
-
-    int totalStars = 0;   // Общее количество обработанных звезд
-    int starsAboveHorizon = 0; // Звезды, находящиеся выше горизонта
-    int starsByMagnitude = 0;  // Звезды, удовлетворяющие звездной величине
-
-    for (auto& star : stars) {
-        // Фильтрация по звездной величине
-        if (star.magnitude > maxMagnitude) {
-            continue; // Пропускаем звезды, которые слишком тусклые
-        }
-
-        starsByMagnitude++;  // Увеличиваем счетчик звезд, подходящих по величине
-
-        // Преобразуем экваториальные координаты в горизонтальные
-        auto [altitude, azimuth] = transformation(observerDec, observerRA, star.ra, star.dec);
-
-        totalStars++; // Увеличиваем общее количество звезд
-
-        // Сохраняем горизонтальные координаты в структуру Star
-        star.altitude = altitude;
-        star.azimuth = azimuth;
-
-        if (altitude > 0) {
-            visibleStars.push_back(star);
-            starsAboveHorizon++; // Увеличиваем счетчик звезд над горизонтом
-        }
-    }
-
-    // Выводим информацию о количестве звезд
-    std::cout << "Всего обработано: " << totalStars << std::endl;
-    std::cout << "Звезд, удовлетворяющих звездной величине: " << starsByMagnitude << std::endl;
-    std::cout << "Звезд над горизонтом: " << starsAboveHorizon << std::endl;
-
-    return visibleStars;
-}
-
-std::pair<double, double> StarCatalog::adjustProjectionCenter(double theta,
-                                                              double psi,
-                                                              double phi)
+// =============== Вспомогательные функции для матриц ===============
+namespace {
+// Умножение 3×3 на 3×1
+std::array<double,3> mul3x3_3x1(const double M[3][3], const std::array<double,3>& v)
 {
-    // Исходный центр проекции в горизонтальной системе (A0=0, z0=π/2),
-    // в декартовой: (x, y, z) = (0, 1, 0).
-    double xc = 0.0, yc = 1.0, zc = 0.0;
-
-    // --- Матрицы поворота вокруг Ox, Oy, Oz --- //
-    double cosTheta = std::cos(theta), sinTheta = std::sin(theta);
-    double R_x[3][3] = {
-        {1,         0,          0},
-        {0,  cosTheta,  -sinTheta},
-        {0,  sinTheta,   cosTheta}
-    };
-
-    double cosPsi = std::cos(psi), sinPsi = std::sin(psi);
-    double R_y[3][3] = {
-        { cosPsi,  0, sinPsi},
-        {      0,  1,     0 },
-        {-sinPsi,  0, cosPsi}
-    };
-
-    double cosPhi = std::cos(phi), sinPhi = std::sin(phi);
-    double R_z[3][3] = {
-        { cosPhi, -sinPhi, 0},
-        { sinPhi,  cosPhi, 0},
-        {      0,       0, 1}
-    };
-
-    // --- Подсчитаем, сколько углов ненулевые --- //
-    bool isThetaNonZero = (std::fabs(theta) > 1e-12);
-    bool isPsiNonZero   = (std::fabs(psi)   > 1e-12);
-    bool isPhiNonZero   = (std::fabs(phi)   > 1e-12);
-    int  numNonZero     = (int)isThetaNonZero + (int)isPsiNonZero + (int)isPhiNonZero;
-
-    // --- Итоговую матрицу R обнулим для начала --- //
-    double R[3][3] = {{0.0, 0.0, 0.0},
-                      {0.0, 0.0, 0.0},
-                      {0.0, 0.0, 0.0}};
-
-    // --- Функция умножения матриц 3×3 --- //
-    auto matMul = [&](const double A[3][3], const double B[3][3], double C[3][3]) {
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                double sum = 0.0;
-                for (int k = 0; k < 3; k++) {
-                    sum += A[i][k] * B[k][j];
-                }
-                C[i][j] = sum;
-            }
+    std::array<double,3> out;
+    for (int i = 0; i < 3; i++) {
+        double sum = 0.0;
+        for (int j = 0; j < 3; j++) {
+            sum += M[i][j] * v[j];
         }
-    };
-
-    if (numNonZero == 1) {
-        // --- Случай, когда ровно один угол отличен от нуля --- //
-        if (isThetaNonZero) {
-            // R = R_x
-            std::memcpy(R, R_x, sizeof(R));
-        } else if (isPsiNonZero) {
-            // R = R_y
-            std::memcpy(R, R_y, sizeof(R));
-        } else { // isPhiNonZero
-            // R = R_z
-            std::memcpy(R, R_z, sizeof(R));
-        }
-    } else {
-        // --- Случай, когда либо нет углов, либо несколько --- //
-        // Полное умножение R = R_z * R_y * R_x
-        double tmp[3][3];
-        matMul(R_y, R_x, tmp);  // M = R_y * R_x
-        matMul(R_z, tmp, R);    // R = R_z * M
+        out[i] = sum;
     }
-
-    // --- Применяем итоговое вращение R к вектору центра (xc, yc, zc) --- //
-    double x_cd = R[0][0] * xc + R[0][1] * yc + R[0][2] * zc;
-    double y_cd = R[1][0] * xc + R[1][1] * yc + R[1][2] * zc;
-    double z_cd = R[2][0] * xc + R[2][1] * yc + R[2][2] * zc;
-
-    // --- Обратное преобразование в «горизонтальные» (alt, az) --- //
-    // При нашей системе Y - вверх, значит alt = arcsin(Y).
-    double newAltitude = std::asin(y_cd);
-
-    // az = atan2(X, Z), с проверкой на "X=Z=0"
-    //double newAzimuth = 0.0;
-    //if (std::fabs(x_cd) > 1e-12 || std::fabs(z_cd) > 1e-12) {
-    //    newAzimuth = std::atan2(x_cd, z_cd);
-    //}
-
-    double newAzimuth = std::atan2(x_cd, z_cd);
-
-    return {newAltitude, newAzimuth};
+    return out;
 }
 
-std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicProjection(
-    const std::vector<Star>& stars,
-    double fovX,
-    double fovY,
-    double theta_deg,
-    double psi_deg,
-    double phi_deg
+// Умножение 3×3 на 3×3
+void mul3x3(const double A[3][3], const double B[3][3], double C[3][3])
+{
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            double sum = 0.0;
+            for (int k = 0; k < 3; k++) {
+                sum += A[i][k] * B[k][j];
+            }
+            C[i][j] = sum;
+        }
+    }
+}
+
+// Транспонирование
+void transpose3x3(const double A[3][3], double AT[3][3])
+{
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            AT[j][i] = A[i][j];
+        }
+    }
+}
+
+// Так как матрицы ортонормированы, A^-1 = A^T
+void invertOrthogonal(const double A[3][3], double Ainv[3][3])
+{
+    transpose3x3(A, Ainv);
+}
+
+// Вращение вокруг оси X
+void rotationX(double alpha, double R[3][3])
+{
+    double c = std::cos(alpha);
+    double s = std::sin(alpha);
+    R[0][0] = 1;  R[0][1] = 0;  R[0][2] = 0;
+    R[1][0] = 0;  R[1][1] = c;  R[1][2] =-s;
+    R[2][0] = 0;  R[2][1] = s;  R[2][2] = c;
+}
+
+// Вращение вокруг оси Y
+void rotationY(double alpha, double R[3][3])
+{
+    double c = std::cos(alpha);
+    double s = std::sin(alpha);
+    R[0][0] = c;  R[0][1] = 0; R[0][2] = s;
+    R[1][0] = 0;  R[1][1] = 1; R[1][2] = 0;
+    R[2][0] =-s;  R[2][1] = 0; R[2][2] = c;
+}
+
+// Вращение вокруг оси Z
+void rotationZ(double alpha, double R[3][3])
+{
+    double c = std::cos(alpha);
+    double s = std::sin(alpha);
+    R[0][0] = c;  R[0][1] =-s; R[0][2] = 0;
+    R[1][0] = s;  R[1][1] = c;  R[1][2] = 0;
+    R[2][0] = 0;  R[2][1] = 0;  R[2][2] = 1;
+}
+
+// По формуле (3.2) — строим матрицу T, переводящую из eq (X,Y,Z) в систему (xi,eta,zeta),
+// так что заданный r0_eq (ось визирования) перейдёт в (0,0,1).
+void buildTransitionMatrix(const std::array<double,3>& r0_eq, double T[3][3])
+{
+    double X0 = r0_eq[0];
+    double Y0 = r0_eq[1];
+    double Z0 = r0_eq[2];
+
+    double D = X0*X0 + Y0*Y0;
+    if (D < 1e-14) {
+        // Случай, когда ось ~ (0,0,±1). Тогда T может быть единичной или flip'нутой.
+        if (Z0 > 0) {
+            // единичная
+            T[0][0]=1; T[0][1]=0; T[0][2]=0;
+            T[1][0]=0; T[1][1]=1; T[1][2]=0;
+            T[2][0]=0; T[2][1]=0; T[2][2]=1;
+        } else {
+            // минус-единичная
+            T[0][0]=-1; T[0][1]= 0; T[0][2]= 0;
+            T[1][0]= 0; T[1][1]=-1; T[1][2]= 0;
+            T[2][0]= 0; T[2][1]= 0; T[2][2]=-1;
+        }
+        return;
+    }
+
+    double invD = 1.0 / D;
+
+    // Ниже один из вариантов матрицы (возможно, придётся поправить знаки).
+    T[0][0] =  Z0 + (X0*X0)*invD;
+    T[0][1] = (X0*Y0)*invD;
+    T[0][2] =  X0;
+
+    T[1][0] = (X0*Y0)*invD;
+    T[1][1] =  Z0 + (Y0*Y0)*invD;
+    T[1][2] =  Y0;
+
+    T[2][0] = -X0;
+    T[2][1] = -Y0;
+    T[2][2] =  Z0;
+}
+} // namespace (anon)
+
+// =========================== Основная логика =============================
+
+std::vector<StarProjection> StarCatalog::projectStars(
+    double alpha0, double dec0, double p0,
+    double beta1,  double beta2, double p,
+    double fovX,   double fovY,
+    double maxMagnitude
     ) const
 {
-    std::vector<double> x, y;
+    // Шаг 1. Вектор оси визирования r0_eq
+    double cosD0 = std::cos(dec0);
+    std::array<double,3> r0_eq = {
+        std::cos(alpha0)*cosD0,
+        std::sin(alpha0)*cosD0,
+        std::sin(dec0)
+    };
 
+    // Шаг 2. Базовая матрица T_noRoll
+    double T_noRoll[3][3];
+    buildTransitionMatrix(r0_eq, T_noRoll);
 
-    double theta = theta_deg * M_PI / 180.0;
-    double psi   = psi_deg   * M_PI / 180.0;
-    double phi   = phi_deg   * M_PI / 180.0;
-    auto [centerAlt, centerAz] = StarCatalog::adjustProjectionCenter(theta, psi, phi);
+    // Шаг 3. Учитываем p0 (поворот вокруг z)
+    double RzP0[3][3], T0[3][3];
+    rotationZ(p0, RzP0);
+    mul3x3(RzP0, T_noRoll, T0);
 
-    std::cout << "Новое значения A0: " << centerAz << std::endl;
-    std::cout << "Новое значения z0: " << centerAlt << std::endl;
+    // Шаг 4. Поворот (0,0,1) вокруг Oxi, Oeta => Rxy = R_x(beta1) * R_y(beta2).
+    double Rx[3][3], Ry[3][3], Rxy[3][3];
+    rotationX(beta1, Rx);
+    rotationY(beta2, Ry);
 
-    double A0 = centerAz;
-    double z0 = centerAlt;
-    // Изначально "рабочий" центр: A0=0, z0= pi/2
+    double tmpM[3][3];
+    // Порядок: Rxy = R_x * R_y
+    mul3x3(Rx, Ry, Rxy);
 
-    // Углы обзора
-    double angleX = (fovX / 2.0) * M_PI / 180.0;
-    double angleY = (fovY / 2.0) * M_PI / 180.0;
+    // Применяем к (0,0,1)
+    std::array<double,3> oldLoS = {0,0,1};
+    auto r1_local = mul3x3_3x1(Rxy, oldLoS);
 
-    double lx = std::abs((sin(z0 + angleX)*cos(z0) - cos(z0+angleX)*sin(z0)*cos(A0)) /
-                         (sin(z0)*sin(z0+angleX) + cos(z0+angleX)*cos(z0)*cos(A0)));
-    double ly = std::abs((sin(z0 + angleY)*cos(z0) - cos(z0+angleY)*sin(z0)*cos(A0)) /
-                         (sin(z0)*sin(z0+angleY) + cos(z0+angleY)*cos(z0)*cos(A0)));
+    // Шаг 5. Переходим обратно в экваториальную: r1_eq = T0^-1 * r1_local
+    double T0inv[3][3];
+    invertOrthogonal(T0, T0inv); // T0 - ортогональная => T0^-1 = T0^T
+    auto r1_eq = mul3x3_3x1(T0inv, r1_local);
 
-    int starsInFov = 0;
+    // Шаг 6. Строим новую матрицу T1_noRoll (вместо "noRoll", точнее, без учёта p)
+    double T1_noRoll[3][3];
+    buildTransitionMatrix(r1_eq, T1_noRoll);
 
-    for (auto& star : stars) {
-        double alt = star.altitude;
-        double az  = star.azimuth;
+    // А теперь обрабатываем звёзды:
+    std::vector<StarProjection> projected;
+    projected.reserve(stars.size());
 
-        double z = alt;
-
-        double sinZ  = std::sin(z);
-        double cosZ  = std::cos(z);
-        double cotZ  = (std::fabs(sinZ) < 1e-9) ? 0.0 : (cosZ / sinZ);
-
-        double sinZ0 = std::sin(z0);
-        double cosZ0 = std::cos(z0);
-
-        double deltaA = az - A0;
-        double denom = sinZ0 + cotZ * cosZ0 * std::cos(deltaA);
-
-        double ksi = (cotZ * std::sin(deltaA)) / denom;
-        double eta = (cosZ0 - cotZ * sinZ0 * std::cos(deltaA)) / denom;
-
-        // Проверка FoV
-        if (ksi >= -lx && ksi <= lx && eta >= -ly && eta <= ly) {
-            x.push_back(ksi);
-            y.push_back(eta);
-            starsInFov++;
+    // Шаг 7. Для каждой звезды:
+    for (auto &star : stars) {
+        // Отбрасываем по величине:
+        if (star.magnitude > maxMagnitude) {
+            continue;
         }
+
+        // Преобразуем RA,Dec -> декартовы (Xeq, Yeq, Zeq)
+        double cdec = std::cos(star.dec);
+        std::array<double,3> starEq = {
+            std::cos(star.ra)*cdec,
+            std::sin(star.ra)*cdec,
+            std::sin(star.dec)
+        };
+
+        // Переходим в систему T1_noRoll: starCam = T1_noRoll * starEq
+        auto starCam = mul3x3_3x1(T1_noRoll, starEq);
+
+        // Шаг 8. Вращаем вокруг оси z на угол p:
+        double RzP[3][3];
+        rotationZ(p, RzP);
+        auto starCam2 = mul3x3_3x1(RzP, starCam);
+
+        double x_ = starCam2[0];
+        double y_ = starCam2[1];
+        double z_ = starCam2[2];
+
+        // Шаг 9. Проекция: xi = x'/z', eta = y'/z'
+        if (std::fabs(z_) < 1e-12) {
+            // Звезда на "горизонте" => пропускаем
+            continue;
+        }
+        double xi  = x_ / z_;
+        double eta = y_ / z_;
+
+        // Шаг 10. Ограничиваем поле зрения (fovX,fovY).
+        // Предположим, fovX,fovY - это "полуширина" в радианах => |xi| < tan(fovX).
+        // Либо можно сразу считать, что fovX,fovY - это "угол" => if |xi| > tan(...) skip.
+        // Пример:
+        double limitX = std::tan(fovX);
+        double limitY = std::tan(fovY);
+
+        if (std::fabs(xi) > limitX || std::fabs(eta) > limitY) {
+            continue;
+        }
+
+        // Добавляем в итог
+        StarProjection pr;
+        pr.x = xi;
+        pr.y = eta;
+        pr.magnitude = star.magnitude;
+        projected.push_back(pr);
     }
 
-    std::cout << "количество звезд, попавших в поле зрения: " << starsInFov << std::endl;
+    std::cout << "[INFO] projectStars: total = " << stars.size()
+              << ", after magnitude => ???, final in fov => "
+              << projected.size() << std::endl;
 
-    return {x, y};
+    return projected;
 }

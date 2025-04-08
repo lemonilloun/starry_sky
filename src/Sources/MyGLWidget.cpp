@@ -68,12 +68,11 @@ void MyGLWidget::paintGL()
                 QVector3D(0.0f, 1.0f, 0.0f));
     glMultMatrixf(view.constData());
 
-    // Применяем повороты Rx(theta), Ry(psi), Rz(phi)
+    // повороты Rx(theta), Ry(psi), Rz(phi)
     glRotatef(float(m_phi),   0.f, 0.f, 1.f);
     glRotatef(float(m_psi),   0.f, 1.f, 0.f);
     glRotatef(float(m_theta), 1.f, 0.f, 0.f);
 
-    // Рисуем оси
     glBegin(GL_LINES);
     // X — красная
     glColor3f(1,0,0);

@@ -1,52 +1,48 @@
 #ifndef STARCATALOG_H
 #define STARCATALOG_H
 
-#include <vector>
 #include <string>
-#include <utility>
+#include <vector>
 
-// Структура для представления информации о звезде
+// Информация о звезде в каталоге
 struct Star {
-    double id;          // Идентификатор звезды
-    double ra;          // Прямое восхождение (в радианах)
-    double dec;         // Склонение (в радианах)
-    double magnitude;   // Звездная величина
-    double colorIndex;  // Индекс цвета (можно игнорировать, если не используется)
-
-    // Горизонтальные координаты
-    double altitude;    // Высота (altitude)
-    double azimuth;     // Азимут (azimuth)
+    double id        = 0.0; // необязательно, если не нужно
+    double ra        = 0.0; // в радианах (0..2*pi)
+    double dec       = 0.0; // в радианах (-pi/2..+pi/2)
+    double magnitude = 99.0;
+    double colorIndex= 0.0;
 };
 
-// Класс для работы с каталогом звезд
-class StarCatalog {
+// Результат проекции: экранные координаты
+struct StarProjection {
+    double x;
+    double y;
+    double magnitude;
+    // Можно добавить id или ещё что-то
+};
+
+class StarCatalog
+{
 public:
-    // Конструктор, принимающий имя файла CSV для загрузки данных
     explicit StarCatalog(const std::string& filename);
+    void loadFromFile(const std::string& filename);
 
-    // Метод для получения звезд, видимых наблюдателю с заданными координатами
-    std::vector<Star> getVisibleStars(double observerRA, double observerDec, double maxMagnitude);
-
-    // Метод для преобразования видимых звезд в стереографическую проекцию с учетом поля зрения (FoV)
-    std::pair<std::vector<double>, std::vector<double>> stereographicProjection(
-        const std::vector<Star>& stars,
-        double fovX,
-        double fovY,
-        double theta_deg,
-        double psi_deg,
-        double phi_deg
+    // Главная функция — новая логика.
+    // Углы здесь передаются в радианах (или в градусах — тогда внутри переводить)
+    // fovX, fovY — "поле зрения" (полуширина) по x,y.
+    // maxMagnitude — максимальная звёздная величина (ярче -> меньше).
+    std::vector<StarProjection> projectStars(
+        double alpha0, double dec0, double p0,
+        double beta1,  double beta2, double p,
+        double fovX,   double fovY,
+        double maxMagnitude
         ) const;
 
-    // Статический метод для корректировки центра проекции по углам поворота датчика (тангаж, крен, рысканье).
-    // Возвращает новую высоту (altitude) и азимут (azimuth) центра.
-    static std::pair<double, double> adjustProjectionCenter(double theta, double psi, double phi);
-
 private:
-    // Вектор для хранения данных о звездах из каталога
     std::vector<Star> stars;
 
-    // Метод для загрузки данных звезд из файла CSV
-    void loadFromFile(const std::string& filename);
+    // Можно (необязательно) добавить вспомогательные методы/матрицы
+    // в private, чтобы не засорять интерфейс.
 };
 
 #endif // STARCATALOG_H

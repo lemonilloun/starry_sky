@@ -210,7 +210,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
     rotationZ(p0, RzP0);
     mul3x3(RzP0, T_noRoll, T0);
 
-    // Шаг 4. Поворот (0,0,1) вокруг Oxi, Oeta => Rxy = R_x(beta1) * R_y(beta2).
+    // Шаг 4. Поворот вокруг Oxi, Oeta => Rxy = R_x(beta1) * R_y(beta2).
     double Rx[3][3], Ry[3][3], Rxy[3][3];
     rotationX(beta1, Rx);
     rotationY(beta2, Ry);

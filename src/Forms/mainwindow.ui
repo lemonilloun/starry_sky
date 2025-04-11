@@ -435,7 +435,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Угол p_0 (градусы)</string>
+     <string>Угол ρ0 (градусы)</string>
     </property>
    </widget>
   </widget>

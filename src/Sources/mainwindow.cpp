@@ -21,20 +21,17 @@ MainWindow::MainWindow(QWidget *parent)
         ui->MapWidget->setLayout(layout);
     }
 
-    // --- Создаём QLabel с заглушкой ---
+    // --- QLabel с заглушкой ---
     QLabel* placeholder = new QLabel(ui->MapWidget);
     placeholder->setScaledContents(true);
     placeholder->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
     QPixmap pix("/Users/lehacho/starry_sky/src/data/placeholder.png");
     placeholder->setPixmap(pix);
 
-    // Добавляем QLabel в лэйаут
     ui->MapWidget->layout()->addWidget(placeholder);
 
-    // Пример: устанавливаем тестовые углы для 3D‑виджета (необязательно)
-    ui->GLWidget->setAngles(10, 20, 30);
+    //ui->GLWidget->setAngles(0, 0, 0);
 
-    // Установка начальных значений некоторых полей (пример)
     ui->observerRaSpinBox->setValue(1.02703168676271);   // RA
     ui->observerDecSpinBox->setValue(-0.00360223021825306); // Dec
     ui->p0SpinBox->setValue(0.0);     // Начальный поворот вокруг оси визирования
@@ -46,16 +43,15 @@ MainWindow::MainWindow(QWidget *parent)
     ui->fovXSpinBox->setValue(58.0);
     ui->fovYSpinBox->setValue(47.0);
 
-    // Подключаем кнопку построения карты
+
     connect(ui->buildMapButton, &QPushButton::clicked,
             this, &MainWindow::buildStarMap);
 
-    // Пример: если хотите, чтобы GLWidget крутился при изменении θ,ψ,φ:
-    connect(ui->thetaSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    connect(ui->beta1SpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &MainWindow::onAnglesChanged);
-    connect(ui->psiSpinBox,   QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    connect(ui->beta2SpinBox,   QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &MainWindow::onAnglesChanged);
-    connect(ui->phiSpinBox,   QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    connect(ui->pSpinBox,   QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &MainWindow::onAnglesChanged);
 }
 
@@ -69,7 +65,7 @@ void MainWindow::buildStarMap()
     // 1) Считываем значения углов из UI
     double alpha0_deg = ui->observerRaSpinBox->value();  // RA для визирования
     double dec0_deg   = ui->observerDecSpinBox->value(); // Dec для визирования
-    double p0_deg     = ui->p0SpinBox->value();          // начальный roll (вокруг оси визирования)
+    double p0_deg     = ui->p0SpinBox->value();          // начальный поворот матрицы
     double beta1_deg  = ui->beta1SpinBox->value();       // угол вокруг оси xi
     double beta2_deg  = ui->beta2SpinBox->value();       // угол вокруг оси eta
     double p_deg      = ui->pSpinBox->value();           // конечный поворот вокруг оси z (визирования)
@@ -79,7 +75,7 @@ void MainWindow::buildStarMap()
     double fovX_deg   = ui->fovXSpinBox->value(); // полуширина по X
     double fovY_deg   = ui->fovYSpinBox->value(); // полуширина по Y
 
-    // 2) Перевод в радианы (при необходимости):
+    // 2) Перевод в радианы
     double alpha0 = alpha0_deg * M_PI / 180.0;
     double dec0   = dec0_deg   * M_PI / 180.0;
     double p0     = p0_deg     * M_PI / 180.0;
@@ -99,7 +95,7 @@ void MainWindow::buildStarMap()
         );
 
     // 4) Подготовим данные, чтобы StarMapWidget мог их отрисовать
-    //    (например, xCoords, yCoords, magnitudes)
+    //    (xCoords, yCoords, magnitudes)
     std::vector<double> xCoords;
     std::vector<double> yCoords;
     std::vector<double> mags;
@@ -130,22 +126,20 @@ void MainWindow::buildStarMap()
         xCoords,
         yCoords,
         mags,
-        /* colorIndices = */ std::vector<double>(), // если нужны цвета, заполните
+        /* colorIndices = */ std::vector<double>(),
         ui->MapWidget
         );
 
     // 7) Добавляем в лэйаут
     mapLayout->addWidget(mapWidget);
 
-    // Готово! Теперь StarMapWidget отрисует звёзды в координатах (xCoords, yCoords).
 }
 
 void MainWindow::onAnglesChanged()
 {
-    double theta_deg = ui->thetaSpinBox->value();
-    double psi_deg   = ui->psiSpinBox->value();
-    double phi_deg   = ui->phiSpinBox->value();
+    double theta_deg = ui->beta1SpinBox->value();
+    double psi_deg   = ui->beta2SpinBox->value();
+    double phi_deg   = ui->pSpinBox->value();
 
-    // Для 3D‑виджета (GLWidget) — передаём новые углы:
     ui->GLWidget->setAngles(theta_deg, psi_deg, phi_deg);
 }

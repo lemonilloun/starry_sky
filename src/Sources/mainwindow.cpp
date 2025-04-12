@@ -39,9 +39,9 @@ MainWindow::MainWindow(QWidget *parent)
     ui->beta2SpinBox->setValue(0.0);
     ui->pSpinBox->setValue(0.0);
 
-    ui->maxMagnitudeSpinBox->setValue(3.8);
-    ui->fovXSpinBox->setValue(58.0);
-    ui->fovYSpinBox->setValue(47.0);
+    ui->maxMagnitudeSpinBox->setValue(4.5);
+    ui->fovXSpinBox->setValue(20.0);
+    ui->fovYSpinBox->setValue(20.0);
 
 
     connect(ui->buildMapButton, &QPushButton::clicked,

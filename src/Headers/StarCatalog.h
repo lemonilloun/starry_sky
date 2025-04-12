@@ -3,22 +3,23 @@
 
 #include <string>
 #include <vector>
+#include <array>
 
-// Информация о звезде в каталоге
+// Структура для хранения исходной информации о звезде
 struct Star {
-    double id        = 0.0; // необязательно, если не нужно
-    double ra        = 0.0; // в радианах (0..2*pi)
-    double dec       = 0.0; // в радианах (-pi/2..+pi/2)
+    double id = 0.0;        // ID звезды
+    double ra = 0.0;        // Прямое восхождение (рад)
+    double dec = 0.0;       // Склонение (рад)
     double magnitude = 99.0;
-    double colorIndex= 0.0;
+    double colorIndex = 0.0;
 };
 
-// Результат проекции: экранные координаты
+// Структура для результата проекции
 struct StarProjection {
-    double x;
+    double x;         // координата на плоскости (после всех поворотов)
     double y;
     double magnitude;
-    // Можно добавить id или ещё что-то
+    double starId;
 };
 
 class StarCatalog
@@ -27,10 +28,7 @@ public:
     explicit StarCatalog(const std::string& filename);
     void loadFromFile(const std::string& filename);
 
-    // Главная функция — новая логика.
-    // Углы здесь передаются в радианах (или в градусах — тогда внутри переводить)
-    // fovX, fovY — "поле зрения" (полуширина) по x,y.
-    // maxMagnitude — максимальная звёздная величина (ярче -> меньше).
+    // Новый метод проекции
     std::vector<StarProjection> projectStars(
         double alpha0, double dec0, double p0,
         double beta1,  double beta2, double p,
@@ -40,9 +38,6 @@ public:
 
 private:
     std::vector<Star> stars;
-
-    // Можно (необязательно) добавить вспомогательные методы/матрицы
-    // в private, чтобы не засорять интерфейс.
 };
 
-#endif // STARCATALOG_H
+#endif

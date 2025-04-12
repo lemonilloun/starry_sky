@@ -10,7 +10,6 @@ StarCatalog::StarCatalog(const std::string& filename) {
 
 void StarCatalog::loadFromFile(const std::string& filename) {
     std::ifstream file(filename);
-
     if (!file.is_open()) {
         std::cerr << "Ошибка: не удалось открыть файл " << filename << std::endl;
         return;
@@ -22,6 +21,7 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 
     while (std::getline(file, line)) {
         if (lineNumber == 0) {
+            // Пропускаем заголовок
             lineNumber++;
             continue;
         }
@@ -32,31 +32,25 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 
         // Чтение StarID
         std::getline(ss, temp, ',');
-        star.id = std::stod(temp); // Преобразуем ID в число
+        star.id = std::stod(temp);
 
-        // Чтение RA
+        // RA (в часах -> перевести в радианы)
         std::getline(ss, temp, ',');
-        star.ra = std::stod(temp) * 15 * M_PI / 180;  // Преобразуем в радианы (RA в часах)
+        star.ra = std::stod(temp) * 15.0 * M_PI / 180.0;
 
-        // Чтение Dec
+        // Dec (в градусах -> радианы)
         std::getline(ss, temp, ',');
-        star.dec = std::stod(temp) * M_PI / 180;      // Преобразуем в радианы (Dec в градусах)
+        star.dec = std::stod(temp) * M_PI / 180.0;
 
-        // Чтение Mag
+        // Mag
         std::getline(ss, temp, ',');
-        star.magnitude = std::stod(temp);             // Преобразуем звездную величину
+        star.magnitude = std::stod(temp);
 
-        // Чтение ColorIndex (можно игнорировать, если не используется)
+        // ColorIndex (необязательно)
         std::getline(ss, temp, ',');
-        star.colorIndex = std::stod(temp);            // Преобразуем индекс цвета
+        star.colorIndex = std::stod(temp);
 
-        stars.push_back(star);  // Добавляем звезду в список
-
-        // Печатаем информацию о считанной звезде для отладки
-        //if (lineNumber <= 10) {  // Например, выводим первые 10 звезд
-        //    std::cout << "Star " << lineNumber << ": RA = " << star.ra << ", Dec = " << star.dec << ", Mag = " << star.magnitude << std::endl;
-        //}
-
+        stars.push_back(star);
         lineNumber++;
     }
 
@@ -273,21 +267,22 @@ std::vector<StarProjection> StarCatalog::projectStars(
 
         // Шаг 10. Ограничиваем поле зрения (fovX,fovY).
         // Предположим, fovX,fovY - это "полуширина" в радианах => |xi| < tan(fovX).
-        // Либо можно сразу считать, что fovX,fovY - это "угол" => if |xi| > tan(...) skip.
-        // Пример:
         double limitX = std::tan(fovX);
         double limitY = std::tan(fovY);
 
         if (std::fabs(xi) > limitX || std::fabs(eta) > limitY) {
             continue;
         }
-
-        // Добавляем в итог
         StarProjection pr;
-        pr.x = xi;
-        pr.y = eta;
+        pr.x         = xi;
+        pr.y         = eta;
         pr.magnitude = star.magnitude;
+        pr.starId    = star.id;
         projected.push_back(pr);
+    }
+
+    for (const auto &pr : projected) {
+        std::cout << "Star in FOV => ID=" << pr.starId << std::endl;
     }
 
     std::cout << "[INFO] projectStars: total = " << stars.size()

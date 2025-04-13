@@ -25,7 +25,7 @@ MainWindow::MainWindow(QWidget *parent)
     QLabel* placeholder = new QLabel(ui->MapWidget);
     placeholder->setScaledContents(true);
     placeholder->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-    QPixmap pix("/Users/lehacho/starry_sky/src/data/placeholder.png");
+    QPixmap pix("/Users/lehacho/starry_sky/src/data/placeholder3.png");
     placeholder->setPixmap(pix);
 
     ui->MapWidget->layout()->addWidget(placeholder);
@@ -34,7 +34,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->observerRaSpinBox->setValue(1.02703168676271);   // RA
     ui->observerDecSpinBox->setValue(-0.00360223021825306); // Dec
-    ui->p0SpinBox->setValue(0.0);     // Начальный поворот вокруг оси визирования
     ui->beta1SpinBox->setValue(0.0);
     ui->beta2SpinBox->setValue(0.0);
     ui->pSpinBox->setValue(0.0);
@@ -65,7 +64,6 @@ void MainWindow::buildStarMap()
     // 1) Считываем значения углов из UI
     double alpha0_deg = ui->observerRaSpinBox->value();  // RA для визирования
     double dec0_deg   = ui->observerDecSpinBox->value(); // Dec для визирования
-    double p0_deg     = ui->p0SpinBox->value();          // начальный поворот матрицы
     double beta1_deg  = ui->beta1SpinBox->value();       // угол вокруг оси xi
     double beta2_deg  = ui->beta2SpinBox->value();       // угол вокруг оси eta
     double p_deg      = ui->pSpinBox->value();           // конечный поворот вокруг оси z (визирования)
@@ -78,7 +76,7 @@ void MainWindow::buildStarMap()
     // 2) Перевод в радианы
     double alpha0 = alpha0_deg * M_PI / 180.0;
     double dec0   = dec0_deg   * M_PI / 180.0;
-    double p0     = p0_deg     * M_PI / 180.0;
+    double p0     = 0;
     double beta1  = beta1_deg  * M_PI / 180.0;
     double beta2  = beta2_deg  * M_PI / 180.0;
     double p      = p_deg      * M_PI / 180.0;

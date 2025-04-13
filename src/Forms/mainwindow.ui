@@ -236,7 +236,7 @@
     <property name="geometry">
      <rect>
       <x>1250</x>
-      <y>250</y>
+      <y>270</y>
       <width>61</width>
       <height>22</height>
      </rect>
@@ -252,7 +252,7 @@
     <property name="geometry">
      <rect>
       <x>1130</x>
-      <y>280</y>
+      <y>300</y>
       <width>111</width>
       <height>16</height>
      </rect>
@@ -265,7 +265,7 @@
     <property name="geometry">
      <rect>
       <x>1250</x>
-      <y>280</y>
+      <y>300</y>
       <width>61</width>
       <height>22</height>
      </rect>
@@ -284,7 +284,7 @@
     <property name="geometry">
      <rect>
       <x>1130</x>
-      <y>250</y>
+      <y>270</y>
       <width>111</width>
       <height>16</height>
      </rect>
@@ -297,7 +297,7 @@
     <property name="geometry">
      <rect>
       <x>1130</x>
-      <y>220</y>
+      <y>240</y>
       <width>111</width>
       <height>16</height>
      </rect>
@@ -310,7 +310,7 @@
     <property name="geometry">
      <rect>
       <x>1250</x>
-      <y>220</y>
+      <y>240</y>
       <width>61</width>
       <height>22</height>
      </rect>
@@ -404,38 +404,6 @@
       <width>271</width>
       <height>200</height>
      </rect>
-    </property>
-   </widget>
-   <widget class="QDoubleSpinBox" name="p0SpinBox">
-    <property name="geometry">
-     <rect>
-      <x>1250</x>
-      <y>310</y>
-      <width>61</width>
-      <height>22</height>
-     </rect>
-    </property>
-    <property name="decimals">
-     <number>2</number>
-    </property>
-    <property name="minimum">
-     <double>0.000000000000000</double>
-    </property>
-    <property name="maximum">
-     <double>180.000000000000000</double>
-    </property>
-   </widget>
-   <widget class="QLabel" name="phi_label_2">
-    <property name="geometry">
-     <rect>
-      <x>1120</x>
-      <y>310</y>
-      <width>121</width>
-      <height>20</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Угол ρ0 (градусы)</string>
     </property>
    </widget>
   </widget>

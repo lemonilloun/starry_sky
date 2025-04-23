@@ -257,6 +257,8 @@ std::vector<StarProjection> StarCatalog::projectStars(
         double y_ = starCam2[1];
         double z_ = starCam2[2];
 
+        if (z_ <= 0) continue;
+
         // Шаг 9. Проекция: xi = x'/z', eta = y'/z'
         if (std::fabs(z_) < 1e-12) {
             // Звезда на "горизонте" => пропускаем
@@ -264,6 +266,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
         }
         double xi  = x_ / z_;
         double eta = y_ / z_;
+
 
         // Шаг 10. Ограничиваем поле зрения (fovX,fovY).
         // Предположим, fovX,fovY - это "полуширина" в радианах => |xi| < tan(fovX).
@@ -282,7 +285,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
     }
 
     for (const auto &pr : projected) {
-        std::cout << "Star in FOV => ID=" << pr.starId << std::endl;
+        std::cout << "Star in FOV => ID=" << pr.starId << " xi:" << pr.x << " eta:" <<pr.y << std::endl;
     }
 
     std::cout << "[INFO] projectStars: total = " << stars.size()

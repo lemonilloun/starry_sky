@@ -2,37 +2,39 @@
 #define STARMAPWIDGET_H
 
 #include <QWidget>
-#include <QPushButton>
 #include <QImage>
 #include <vector>
 
-class StarMapWidget : public QWidget
-{
+class StarMapWidget : public QWidget {
     Q_OBJECT
 
 public:
-    explicit StarMapWidget(const std::vector<double>& xCoords,
-                           const std::vector<double>& yCoords,
-                           const std::vector<double>& magnitudes,
-                           const std::vector<double>& colorIndices,
-                           QWidget* parent = nullptr);
+    StarMapWidget(
+        const std::vector<double>& x,
+        const std::vector<double>& y,
+        const std::vector<double>& mag,
+        QWidget *parent = nullptr
+        );
+
+    /** Устанавливает позицию Солнца в проекционных координатах ξ,η */
+    void setSunPosition(double xi, double eta);
 
 protected:
-    void paintEvent(QPaintEvent* event) override;      // Отрисовка виджета
-
+    void paintEvent(QPaintEvent *event) override;
 
 private:
-    void renderStars();                // Отрисовка звезд
+    void renderStars();
 
-    QImage starMapImage;               // Исходное изображение звездного неба
-    QImage blurredImage;               // Размытое изображение
-    QPushButton* saveButton;           // Кнопка сохранения изображения
-    QPushButton* interactiveModeButton; // Кнопка включения интерактивного режима
+    std::vector<double> xCoords;
+    std::vector<double> yCoords;
+    std::vector<double> magnitudes;
 
-    std::vector<double> xCoords;       // Координаты звезд по X
-    std::vector<double> yCoords;       // Координаты звезд по Y
-    std::vector<double> magnitudes;    // Звездные величины
-    std::vector<double> colorIndices;  // Цветовые индексы
+    QImage starMapImage;
+    QImage blurredImage;
+
+    // координаты Солнца в системе ξ,η
+    double sunXi = 0.0;
+    double sunEta = 0.0;
 };
 
 #endif // STARMAPWIDGET_H

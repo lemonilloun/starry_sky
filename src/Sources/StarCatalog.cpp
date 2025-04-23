@@ -233,7 +233,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
     // Шаг 7. Для каждой звезды:
     for (auto &star : stars) {
         // Отбрасываем по величине:
-        if (star.magnitude > maxMagnitude) {
+        if (star.id!=0 && star.magnitude > maxMagnitude) {
             continue;
         }
 
@@ -257,6 +257,10 @@ std::vector<StarProjection> StarCatalog::projectStars(
         double y_ = starCam2[1];
         double z_ = starCam2[2];
 
+        // ---- новый фильтр по зениту ----
+        if (star.id!=0 && z_ <= 0.0)           // угол > 90°  (cosθ ≤ 0) – «за» камерой
+            continue;
+
         // Шаг 9. Проекция: xi = x'/z', eta = y'/z'
         if (std::fabs(z_) < 1e-12) {
             // Звезда на "горизонте" => пропускаем
@@ -270,9 +274,12 @@ std::vector<StarProjection> StarCatalog::projectStars(
         double limitX = std::tan(fovX);
         double limitY = std::tan(fovY);
 
-        if (std::fabs(xi) > limitX || std::fabs(eta) > limitY) {
-            continue;
+        if (star.id != 0){
+            if (std::fabs(xi) > limitX || std::fabs(eta) > limitY) {
+                continue;
+            }
         }
+
         StarProjection pr;
         pr.x         = xi;
         pr.y         = eta;

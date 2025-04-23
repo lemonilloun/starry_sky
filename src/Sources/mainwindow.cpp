@@ -62,75 +62,80 @@ MainWindow::~MainWindow()
 void MainWindow::buildStarMap()
 {
     // 1) Считываем значения углов из UI
-    double alpha0_deg = ui->observerRaSpinBox->value();  // RA для визирования
-    double dec0_deg   = ui->observerDecSpinBox->value(); // Dec для визирования
-    double beta1_deg  = ui->beta1SpinBox->value();       // угол вокруг оси xi
-    double beta2_deg  = ui->beta2SpinBox->value();       // угол вокруг оси eta
-    double p_deg      = ui->pSpinBox->value();           // конечный поворот вокруг оси z (визирования)
-    double maxMag     = ui->maxMagnitudeSpinBox->value();
+    double alpha0_deg = ui->observerRaSpinBox->value();   // RA визирования
+    double dec0_deg   = ui->observerDecSpinBox->value();  // Dec визирования
+    double beta1_deg  = ui->beta1SpinBox->value();        // угол вокруг xi
+    double beta2_deg  = ui->beta2SpinBox->value();        // угол вокруг eta
+    double p_deg      = ui->pSpinBox->value();            // угол вокруг z
+    double maxMag     = ui->maxMagnitudeSpinBox->value(); // порог по яркости
 
-    // Поле зрения
-    double fovX_deg   = ui->fovXSpinBox->value(); // полуширина по X
-    double fovY_deg   = ui->fovYSpinBox->value(); // полуширина по Y
+    // Поле зрения (полуширины)
+    double fovX_deg = ui->fovXSpinBox->value();
+    double fovY_deg = ui->fovYSpinBox->value();
 
     // 2) Перевод в радианы
     double alpha0 = alpha0_deg * M_PI / 180.0;
     double dec0   = dec0_deg   * M_PI / 180.0;
-    double p0     = 0;
     double beta1  = beta1_deg  * M_PI / 180.0;
     double beta2  = beta2_deg  * M_PI / 180.0;
     double p      = p_deg      * M_PI / 180.0;
-    double fovX   = fovX_deg   * M_PI / 180.0;
-    double fovY   = fovY_deg   * M_PI / 180.0;
+    double fovX   = (fovX_deg/2.0) * M_PI / 180.0;
+    double fovY   = (fovY_deg/2.0) * M_PI / 180.0;
 
-    // 3) Вызываем новый метод projectStars(...) из StarCatalog
-    //    Он вернёт список StarProjection {x,y,magnitude}
+    // 3) Проецируем все объекты (звёзды + Солнце ID=0)
     auto starProjections = catalog->projectStars(
-        alpha0, dec0, p0,
+        alpha0, dec0,
+        /* p0 = */ 0.0,
         beta1, beta2, p,
         fovX, fovY,
         maxMag
         );
 
-    // 4) Подготовим данные, чтобы StarMapWidget мог их отрисовать
-    //    (xCoords, yCoords, magnitudes)
-    std::vector<double> xCoords;
-    std::vector<double> yCoords;
-    std::vector<double> mags;
-    xCoords.reserve(starProjections.size());
-    yCoords.reserve(starProjections.size());
-    mags.reserve(starProjections.size());
-
-    for (auto &proj : starProjections) {
-        xCoords.push_back(proj.x);
-        yCoords.push_back(proj.y);
-        mags.push_back(proj.magnitude);
+    // 4) Выбираем координаты Солнца
+    double sunXi = 0.0, sunEta = 0.0;
+    for (auto &pr : starProjections) {
+        if (pr.starId == 0) {
+            sunXi  = pr.x;
+            sunEta = pr.y;
+            break;
+        }
     }
 
-    // 5) Удаляем старое содержимое MapWidget (убираем заглушку или прежний StarMapWidget)
+    // 5) Собираем обычные звёзды
+    std::vector<double> xCoords, yCoords, mags;
+    xCoords.reserve(starProjections.size());
+    yCoords.reserve(starProjections.size());
+    mags.   reserve(starProjections.size());
+    for (auto &pr : starProjections) {
+        if (pr.starId == 0) continue;
+        xCoords.push_back(pr.x);
+        yCoords.push_back(pr.y);
+        mags.   push_back(pr.magnitude);
+    }
+
+    // 6) Очищаем старый виджет из MapWidget
     QLayout *mapLayout = ui->MapWidget->layout();
     if (mapLayout) {
         QLayoutItem *child;
         while ((child = mapLayout->takeAt(0)) != nullptr) {
-            if (child->widget()) {
-                delete child->widget();
-            }
+            if (auto w = child->widget()) delete w;
             delete child;
         }
     }
 
-    // 6) Создаём StarMapWidget на основе xCoords,yCoords
+    // 7) Создаём новый StarMapWidget
     StarMapWidget* mapWidget = new StarMapWidget(
         xCoords,
         yCoords,
         mags,
-        /* colorIndices = */ std::vector<double>(),
         ui->MapWidget
         );
 
-    // 7) Добавляем в лэйаут
-    mapLayout->addWidget(mapWidget);
+    // 8) Передаём координаты Солнца
+    mapWidget->setSunPosition(sunXi, sunEta);
 
+    // 9) Добавляем его в лэйаут без пересоздания самого лэйаута
+    mapLayout->addWidget(mapWidget);
 }
 
 void MainWindow::onAnglesChanged()

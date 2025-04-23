@@ -233,7 +233,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
     // Шаг 7. Для каждой звезды:
     for (auto &star : stars) {
         // Отбрасываем по величине:
-        if (star.magnitude > maxMagnitude) {
+        if (star.id != 1010101010 && star.magnitude > maxMagnitude) {
             continue;
         }
 
@@ -257,7 +257,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
         double y_ = starCam2[1];
         double z_ = starCam2[2];
 
-        if (z_ <= 0) continue;
+        if (star.id != 1010101010 && z_ <= 0) continue;
 
         // Шаг 9. Проекция: xi = x'/z', eta = y'/z'
         if (std::fabs(z_) < 1e-12) {
@@ -274,8 +274,9 @@ std::vector<StarProjection> StarCatalog::projectStars(
         double limitY = std::tan(fovY);
 
         if (std::fabs(xi) > limitX || std::fabs(eta) > limitY) {
-            continue;
-        }
+                continue;
+            }
+
         StarProjection pr;
         pr.x         = xi;
         pr.y         = eta;

@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include <QDebug>
 #include <cmath>
+#include <cstdint>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -83,8 +84,7 @@ void MainWindow::buildStarMap()
     double fovX   = fovX_deg   * M_PI / 180.0;
     double fovY   = fovY_deg   * M_PI / 180.0;
 
-    // 3) Вызываем новый метод projectStars(...) из StarCatalog
-    //    Он вернёт список StarProjection {x,y,magnitude}
+    // 3) Проецируем
     auto starProjections = catalog->projectStars(
         alpha0, dec0, p0,
         beta1, beta2, p,
@@ -92,45 +92,42 @@ void MainWindow::buildStarMap()
         maxMag
         );
 
-    // 4) Подготовим данные, чтобы StarMapWidget мог их отрисовать
-    //    (xCoords, yCoords, magnitudes)
-    std::vector<double> xCoords;
-    std::vector<double> yCoords;
-    std::vector<double> mags;
+    // 4) Подготовим данные для StarMapWidget
+    std::vector<double>   xCoords, yCoords, mags;
+    std::vector<uint64_t> ids;                  // <-- вот он!
     xCoords.reserve(starProjections.size());
     yCoords.reserve(starProjections.size());
-    mags.reserve(starProjections.size());
+    mags.   reserve(starProjections.size());
+    ids.    reserve(starProjections.size());
 
     for (auto &proj : starProjections) {
         xCoords.push_back(proj.x);
         yCoords.push_back(proj.y);
-        mags.push_back(proj.magnitude);
+        mags.   push_back(proj.magnitude);
+        ids.    push_back(proj.starId);         // <-- заполняем здесь
     }
 
-    // 5) Удаляем старое содержимое MapWidget (убираем заглушку или прежний StarMapWidget)
+    // 5) Очищаем старый виджет
     QLayout *mapLayout = ui->MapWidget->layout();
     if (mapLayout) {
         QLayoutItem *child;
         while ((child = mapLayout->takeAt(0)) != nullptr) {
-            if (child->widget()) {
-                delete child->widget();
-            }
+            if (child->widget()) delete child->widget();
             delete child;
         }
     }
 
-    // 6) Создаём StarMapWidget на основе xCoords,yCoords
-    StarMapWidget* mapWidget = new StarMapWidget(
+    // 6) Создаем новый и передаем ids
+    auto *mapWidget = new StarMapWidget(
         xCoords,
         yCoords,
         mags,
-        /* colorIndices = */ std::vector<double>(),
+        ids,               // <-- передаем сюда
         ui->MapWidget
         );
 
     // 7) Добавляем в лэйаут
     mapLayout->addWidget(mapWidget);
-
 }
 
 void MainWindow::onAnglesChanged()

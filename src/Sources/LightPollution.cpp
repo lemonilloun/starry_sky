@@ -1,47 +1,136 @@
+// LightPollution.cpp
+
 #include "LightPollution.h"
+#include <QPainter>
+#include <QPainterPath>
+#include <QRadialGradient>
+#include <QLinearGradient>
 #include <QRandomGenerator>
-#include <QImage>
 #include <cmath>
-#include <algorithm>
 
+QImage LightPollution::applySunFlare(
+    const QImage& image,
+    double centerX,
+    double centerY,
+    double baseIntensity,     // [0..1] яркость ореола
+    double baseRadiusFactor,  // радиус ореола = max(W,H)*baseRadiusFactor
+    int    numRays,           // число дополнительных лучей
+    double rayIntensity,      // [0..1] яркость начала луча
+    double maxRayLengthFactor,// макс. длина луча = max(W,H)*factor
+    double coreRadius         // радиус твёрдого ядра
+    ) {
+    int W = image.width();
+    int H = image.height();
+    QImage result = image;
+    QPainter p(&result);
+    p.setRenderHint(QPainter::Antialiasing);
 
-QImage LightPollution::applyLightPollution(const QImage& image, double intensity, double gradientFactor) {
-    int width = image.width();
-    int height = image.height();
-    QImage resultImage = image;
+    // 1) Центральный радиальный ореол
+    double R = std::max(W, H) * baseRadiusFactor;
+    QRadialGradient rg(QPointF(centerX, centerY), R);
+    rg.setColorAt(coreRadius/R, QColor(255,255,255, int(baseIntensity*255)));
+    rg.setColorAt(1.0, QColor(0,0,0,0));
+    p.setBrush(rg);
+    p.setPen(Qt::NoPen);
+    p.drawEllipse(QPointF(centerX, centerY), R, R);
 
-    // Случайная интенсивность засветки в диапазоне от 0.1 до 0.3
-    if (intensity <= 0.0) {
-        intensity = 0.1 + QRandomGenerator::global()->bounded(0.2);
-    }
+    // 2) Три «основных» луча и их зеркальные отростки
+    double axisAng = QRandomGenerator::global()->generateDouble() * 2*M_PI;
+    double spread  = 0.05;  // ±6°
+    double offsets[3] = {-spread, 0.0, +spread};
+    double mainLenF = 1.2;       // длина основного луча
+    double sideLenF = 0.8;       // длина боковых лучей
+    double maxLen   = std::max(W,H) * maxRayLengthFactor;
 
-    // Генерируем случайную центральную точку для засветки
-    int centerX = QRandomGenerator::global()->bounded(width);
-    int centerY = QRandomGenerator::global()->bounded(height);
+    // для каждого из 3-х смещений и для зеркала
+    for (int i=0; i<3; ++i) {
+        for (int mir=0; mir<2; ++mir) {
+            double ang = axisAng + offsets[i] + (mir ? M_PI : 0.0);
+            double dx =  cos(ang), dy = -sin(ang);
+            double lenF = (i==1 ? mainLenF : sideLenF);
+            QPointF start(centerX + dx*coreRadius,
+                          centerY + dy*coreRadius);
+            QPointF end(centerX + dx*(coreRadius + lenF*maxLen),
+                        centerY + dy*(coreRadius + lenF*maxLen));
 
-    // Максимальное расстояние для нормализации - возможно стоит изменить, так как это норм, если засвет выходит да границы изображения
-    double maxDistance = std::sqrt(centerX * centerX + centerY * centerY);
+            QLinearGradient lg(start, end);
+            lg.setColorAt(0.0, QColor(255,255,255, int(rayIntensity*255)));
+            lg.setColorAt(1.0, QColor(255,255,255,   0));
 
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            int grayValue = qGray(resultImage.pixel(x, y));  // Получаем текущую яркость (0-255)
-
-            // Вычисляем расстояние от текущего пикселя до центра засветки
-            double distance = std::sqrt(std::pow(x - centerX, 2) + std::pow(y - centerY, 2));
-
-            // Гауссово затухание
-            double gaussianFactor = intensity * std::exp(-std::pow(distance / (maxDistance * gradientFactor), 2));
-
-            // Получаем случайное значение в диапазоне [-0.02, 0.02]
-            double noise = (QRandomGenerator::global()->bounded(4001) - 2000) / 100000.0 * 255;
-
-            // Итоговая яркость с добавлением шума
-            int newGrayValue = std::clamp(static_cast<int>(grayValue + gaussianFactor * 255 + noise), 0, 255);
-
-            // Устанавливаем обновленный уровень яркости обратно в изображение
-            resultImage.setPixel(x, y, qRgb(newGrayValue, newGrayValue, newGrayValue));
+            // ширина основных лучей ≥6px, +0..3px рандом
+            int w = 10 + QRandomGenerator::global()->bounded(4);
+            QPen pen(lg, w, Qt::SolidLine, Qt::RoundCap);
+            p.setPen(pen);
+            p.drawLine(start, end);
         }
     }
 
-    return resultImage;
+    // 3) Дополнительные лучи, равномерно по окружности
+    for (int i=0; i<numRays; ++i) {
+        double ang = (2*M_PI * i) / numRays;
+        double dx =  cos(ang), dy = -sin(ang);
+        double len = coreRadius + maxLen * (0.5 + QRandomGenerator::global()->generateDouble()*0.5);
+
+        QPointF start(centerX + dx*coreRadius,
+                      centerY + dy*coreRadius);
+        QPointF end(centerX + dx*len,
+                    centerY + dy*len);
+
+        QLinearGradient lg(start, end);
+        lg.setColorAt(0.0, QColor(255,255,255, int(rayIntensity*200))); // чуть более мягко
+        lg.setColorAt(1.0, QColor(255,255,255,    0));
+
+        // тонкие дополнительные лучи: 2px
+        QPen pen(lg, 2, Qt::SolidLine, Qt::RoundCap);
+        p.setPen(pen);
+        p.drawLine(start, end);
+    }
+
+    double crossBase = axisAng + M_PI_2; // поворот на 90°
+    double crossOffsets[3] = {-spread, 0.0, +spread};
+    for (int i=0; i<3; ++i) {
+        for (int mir=0; mir<2; ++mir) {
+            double ang = crossBase + crossOffsets[i] + (mir ? M_PI : 0.0);
+            double dx =  std::cos(ang), dy = -std::sin(ang);
+            // для «крестовых» лучей даём чуть больше рандома по длине
+            double lenF = (i==1 ? (mainLenF * (0.8 + QRandomGenerator::global()->generateDouble()*0.2))
+                                  : (sideLenF * (0.8 + QRandomGenerator::global()->generateDouble()*0.2)));
+            QPointF start(centerX + dx*coreRadius,
+                          centerY + dy*coreRadius);
+            QPointF end(centerX + dx*(coreRadius + lenF*maxLen),
+                        centerY + dy*(coreRadius + lenF*maxLen));
+
+            QLinearGradient lg(start, end);
+            // чуть меньшая интенсивность для крестовых лучей
+            lg.setColorAt(0.0, QColor(255,255,255, int(rayIntensity*200)));
+            lg.setColorAt(1.0, QColor(255,255,255,   0));
+
+            int w = 10 + QRandomGenerator::global()->bounded(4);
+            QPen pen(lg, w, Qt::SolidLine, Qt::RoundCap);
+            p.setPen(pen);
+            p.drawLine(start, end);
+        }
+    }
+
+    // 3) Шумной контур «ядра» солнца
+    const int M = 64;             // число вершин шумного контура
+    const double noiseAmp = 0.05; // амплитуда шума ±5%
+    QPainterPath noisyCore;
+    // стартовая точка на углу 0
+    noisyCore.moveTo(centerX + coreRadius, centerY);
+    for (int k = 1; k <= M; ++k) {
+        double ang = (2*M_PI*k) / double(M);
+        double n   = (QRandomGenerator::global()->generateDouble()*2 - 1) * noiseAmp;
+        double r   = coreRadius * (1.0 + n);
+        double px  = centerX + std::cos(ang) * r;
+        double py  = centerY - std::sin(ang) * r;
+        noisyCore.lineTo(px, py);
+    }
+    noisyCore.closeSubpath();
+
+    p.setBrush(QColor(255, 230, 150, 200)); // полупрозрачный жёлтый
+    p.setPen(Qt::NoPen);
+    p.drawPath(noisyCore);
+
+    return result;
 }

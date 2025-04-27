@@ -24,14 +24,14 @@ StarMapWidget::StarMapWidget(
     starIds(ids),
     sun(sunInfo)
 {
-    // 1) black canvas
+    // 1) чёрно-белый холст
     starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
     starMapImage.fill(Qt::black);
 
-    // 2) draw all stars (including the Sun‐disk only if it's in‐frame)
+    // 2) рисуем все точки (звёзды + диск Солнца, если он в кадре)
     renderStars();
 
-    // 3) Gaussian blur
+    // 3) размытие Гауссом
     blurredImage = GaussianBlur::applyGaussianBlur(
         starMapImage,
         /*kernelSize=*/13,
@@ -40,13 +40,13 @@ StarMapWidget::StarMapWidget(
         /*rho=*/0.75
         );
 
-    // 4) if the Sun was projected (sun.apply==true), overlay a
-    //    shrinking/fading flare as it drifts out of frame
+    // 4) если Солнце «попало» (sun.apply==true), рисуем flare,
+    //    который плавно сужается/тускнеет по мере удаления из кадра
     if (sun.apply) {
         int W = blurredImage.width();
         int H = blurredImage.height();
 
-        // recompute the same bbox & scale as in renderStars()
+        // пересчитаем bbox & scale из renderStars()
         double minX = +1e9, maxX = -1e9, minY = +1e9, maxY = -1e9;
         for (double v : xCoords) minX = std::min(minX, v), maxX = std::max(maxX, v);
         for (double v : yCoords) minY = std::min(minY, v), maxY = std::max(maxY, v);
@@ -56,26 +56,27 @@ StarMapWidget::StarMapWidget(
             double cy    = 0.5*(minY + maxY);
             double scale = std::min(W/dx, H/dy);
 
-            // pixel coords of Sun center
-            double sunXpix = W/2.0 + (sun.xi - cx)*scale;
+            // координаты Солнца в пикселях
+            double sunXpix = W/2.0 + (sun.xi  - cx)*scale;
             double sunYpix = H/2.0 - (sun.eta - cy)*scale;
 
-            // full halo radius in px (baseRadiusFactor==1.0)
-            double Rpix_full = std::max(W,H) * 1.0;
+            // полный радиус ореола (baseRadiusFactor == 1.0)
+            double Rpix_full = std::max(W, H) * 1.5;
 
-            // distance of Sun center from frame center
+            // расстояние центра flare до центра кадра
             double ddx = sunXpix - W/2.0;
             double ddy = sunYpix - H/2.0;
             double distCenter = std::sqrt(ddx*ddx + ddy*ddy);
 
-            // only draw as long as some of the halo overlaps
+            // сколько «облака» ещё перекрывает кадр
             double overlap = Rpix_full - distCenter;
             if (overlap > 0) {
-                double frac = overlap / Rpix_full;  // 1.0 inside frame → 0 as it drifts out
+                // доля полного ореола, которая ещё внутри кадра
+                double frac = overlap / Rpix_full;  // 1.0 в центре → 0 по краю
 
-                // shrink both radius & intensity by frac
-                double effRadiusFactor = frac * 1.0;        // baseRadiusFactor
-                double effIntensity    = frac * 0.4;        // baseIntensity
+                // уменьшаем и радиус, и яркость пропорционально frac
+                double effRadiusFactor = frac * 1.2;  // чуть «раздуваем» чуть-чуть
+                double effIntensity    = frac * 0.6;  // базовая яркость
 
                 blurredImage = LightPollution::applySunFlare(
                     blurredImage,
@@ -92,7 +93,7 @@ StarMapWidget::StarMapWidget(
         }
     }
 
-    // 5) global gentle boost & noise so the sky isn’t pitch-black
+    // 5) лёгкий глобальный «буст» и шум, чтобы не было чисто-чёрного фона
     blurredImage = LightPollution::applyGlobalBoost(
         blurredImage,
         /*boost=*/          0.1,

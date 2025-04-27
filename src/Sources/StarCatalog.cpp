@@ -315,15 +315,13 @@ std::vector<StarProjection> StarCatalog::projectStars(
         projected.push_back(pr);
     }
 
-    std::cout << "Sun= " <<outSun.apply << "\n";
-
-    // Debug print
+    std::cout << "Sun= " << outSun.apply << std::endl;
     for (auto &pr : projected) {
         std::cout << "Star in FOV => ID=" << pr.starId
-                  << " xi:" << pr.x << " eta:" << pr.y << "\n";
+                  << " xi:" << pr.x << " eta:" << pr.y << std::endl;
     }
     std::cout << "[INFO] projectStars: total=" << stars.size()
-              << ", projected=" << projected.size() << "\n";
+              << ", projected=" << projected.size() << std::endl;
 
     return projected;
 }

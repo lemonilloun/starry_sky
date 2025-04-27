@@ -24,14 +24,14 @@ StarMapWidget::StarMapWidget(
     starIds(ids),
     sun(sunInfo)
 {
-    // 1) Create black & white canvas
+    // 1) black canvas
     starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
     starMapImage.fill(Qt::black);
 
-    // 2) Draw stars (and sun‐disk if it's actually in the FOV)
+    // 2) draw all stars (including the Sun‐disk only if it's in‐frame)
     renderStars();
 
-    // 3) Apply Gaussian blur
+    // 3) Gaussian blur
     blurredImage = GaussianBlur::applyGaussianBlur(
         starMapImage,
         /*kernelSize=*/13,
@@ -40,44 +40,63 @@ StarMapWidget::StarMapWidget(
         /*rho=*/0.75
         );
 
-    // 4) If sun.apply==true, overlay the flare at sun.xi/sun.eta
+    // 4) if the Sun was projected (sun.apply==true), overlay a
+    //    shrinking/fading flare as it drifts out of frame
     if (sun.apply) {
         int W = blurredImage.width();
         int H = blurredImage.height();
 
-        // re-compute the same bbox/scale used in renderStars()
+        // recompute the same bbox & scale as in renderStars()
         double minX = +1e9, maxX = -1e9, minY = +1e9, maxY = -1e9;
         for (double v : xCoords) minX = std::min(minX, v), maxX = std::max(maxX, v);
         for (double v : yCoords) minY = std::min(minY, v), maxY = std::max(maxY, v);
         double dx = maxX - minX, dy = maxY - minY;
         if (dx > 0 && dy > 0) {
-            double cx    = 0.5 * (minX + maxX);
-            double cy    = 0.5 * (minY + maxY);
+            double cx    = 0.5*(minX + maxX);
+            double cy    = 0.5*(minY + maxY);
             double scale = std::min(W/dx, H/dy);
 
-            // compute sun pixel coords
+            // pixel coords of Sun center
             double sunXpix = W/2.0 + (sun.xi - cx)*scale;
             double sunYpix = H/2.0 - (sun.eta - cy)*scale;
 
-            // apply the flare
-            blurredImage = LightPollution::applySunFlare(
-                blurredImage,
-                sunXpix,
-                sunYpix,
-                /*baseIntensity=*/0.4,
-                /*baseRadiusFactor=*/1.0,
-                /*numRays=*/128,
-                /*rayIntensity=*/0.2,
-                /*maxRayLengthFactor=*/0.3,
-                /*coreRadius=*/52.0
-                );
+            // full halo radius in px (baseRadiusFactor==1.0)
+            double Rpix_full = std::max(W,H) * 1.0;
+
+            // distance of Sun center from frame center
+            double ddx = sunXpix - W/2.0;
+            double ddy = sunYpix - H/2.0;
+            double distCenter = std::sqrt(ddx*ddx + ddy*ddy);
+
+            // only draw as long as some of the halo overlaps
+            double overlap = Rpix_full - distCenter;
+            if (overlap > 0) {
+                double frac = overlap / Rpix_full;  // 1.0 inside frame → 0 as it drifts out
+
+                // shrink both radius & intensity by frac
+                double effRadiusFactor = frac * 1.0;        // baseRadiusFactor
+                double effIntensity    = frac * 0.4;        // baseIntensity
+
+                blurredImage = LightPollution::applySunFlare(
+                    blurredImage,
+                    sunXpix,
+                    sunYpix,
+                    /*baseIntensity=*/     effIntensity,
+                    /*baseRadiusFactor=*/  effRadiusFactor,
+                    /*numRays=*/           128,
+                    /*rayIntensity=*/      0.2,
+                    /*maxRayLengthFactor=*/0.3,
+                    /*coreRadius=*/        52.0
+                    );
+            }
         }
     }
 
+    // 5) global gentle boost & noise so the sky isn’t pitch-black
     blurredImage = LightPollution::applyGlobalBoost(
         blurredImage,
-        /*boost*/          0.1,
-        /*noiseAmplitude*/ 0.01
+        /*boost=*/          0.1,
+        /*noiseAmplitude=*/ 0.01
         );
 }
 

@@ -2,7 +2,7 @@
 #include "StarMapWidget.h"
 #include "GaussianBlur.h"
 #include "LightPollution.h"
-
+#include <iostream>
 #include <QPainter>
 #include <limits>
 #include <algorithm>
@@ -15,20 +15,23 @@ StarMapWidget::StarMapWidget(
     const std::vector<double>&   y,
     const std::vector<double>&   m,
     const std::vector<uint64_t>& ids,
-    QWidget* parent
+    const StarCatalog::Sun&      sunInfo,
+    QWidget*                     parent
     ) : QWidget(parent),
-    xCoords(x), yCoords(y),
+    xCoords(x),
+    yCoords(y),
     magnitudes(m),
-    starIds(ids)
+    starIds(ids),
+    sun(sunInfo)
 {
-    // 1) Чёрно-белое полотно
+    // 1) Create black & white canvas
     starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
     starMapImage.fill(Qt::black);
 
-    // 2) Рисуем все звёзды и Солнце как точку
+    // 2) Draw stars (and sun‐disk if it's actually in the FOV)
     renderStars();
 
-    // 3) Размываем Гауссом
+    // 3) Apply Gaussian blur
     blurredImage = GaussianBlur::applyGaussianBlur(
         starMapImage,
         /*kernelSize=*/13,
@@ -37,46 +40,44 @@ StarMapWidget::StarMapWidget(
         /*rho=*/0.75
         );
 
-    // 4) Если Солнце в списке и попало в кадр — добавляем flare
-    int W = blurredImage.width();
-    int H = blurredImage.height();
+    // 4) If sun.apply==true, overlay the flare at sun.xi/sun.eta
+    if (sun.apply) {
+        int W = blurredImage.width();
+        int H = blurredImage.height();
 
-    // снова вычислим bbox/scale, чтобы найти пиксельные координаты солнца:
-    double minX = +1e9, maxX = -1e9, minY = +1e9, maxY = -1e9;
-    for (double v : xCoords) minX = std::min(minX, v), maxX = std::max(maxX, v);
-    for (double v : yCoords) minY = std::min(minY, v), maxY = std::max(maxY, v);
-    double dx = maxX-minX, dy = maxY-minY;
-    if (dx>0 && dy>0) {
-        double cx    = 0.5*(minX+maxX);
-        double cy    = 0.5*(minY+maxY);
-        double scale = std::min(W/dx, H/dy);
+        // re-compute the same bbox/scale used in renderStars()
+        double minX = +1e9, maxX = -1e9, minY = +1e9, maxY = -1e9;
+        for (double v : xCoords) minX = std::min(minX, v), maxX = std::max(maxX, v);
+        for (double v : yCoords) minY = std::min(minY, v), maxY = std::max(maxY, v);
+        double dx = maxX - minX, dy = maxY - minY;
+        if (dx > 0 && dy > 0) {
+            double cx    = 0.5 * (minX + maxX);
+            double cy    = 0.5 * (minY + maxY);
+            double scale = std::min(W/dx, H/dy);
 
-        for (size_t i = 0; i < starIds.size(); ++i) {
-            if (starIds[i] == SUN_ID) {
-                double sunXpix = W/2.0 + (xCoords[i] - cx)*scale;
-                double sunYpix = H/2.0 - (yCoords[i] - cy)*scale;
+            // compute sun pixel coords
+            double sunXpix = W/2.0 + (sun.xi - cx)*scale;
+            double sunYpix = H/2.0 - (sun.eta - cy)*scale;
 
-                // рисуем flare с радиусом 40% от большего размера
-                //double R = 0.6 * std::max(W, H);
-                blurredImage = LightPollution::applySunFlare(
-                    blurredImage,
-                    sunXpix, sunYpix,
-                    /*baseIntensity=*/0.4,
-                    /*baseRadiusFactor=*/1.0,
-                    /*numRays=*/128,
-                    /*rayIntensity=*/0.2,
-                    /*maxRayLengthFactor=*/0.3,
-                    /*coreRadius=*/52.0
-                    );
-                break;
-            }
+            // apply the flare
+            blurredImage = LightPollution::applySunFlare(
+                blurredImage,
+                sunXpix,
+                sunYpix,
+                /*baseIntensity=*/0.4,
+                /*baseRadiusFactor=*/1.0,
+                /*numRays=*/128,
+                /*rayIntensity=*/0.2,
+                /*maxRayLengthFactor=*/0.3,
+                /*coreRadius=*/52.0
+                );
         }
     }
 
     blurredImage = LightPollution::applyGlobalBoost(
         blurredImage,
-        /*boost*/         0.1,
-        /*noiseAmplitude*/0.01
+        /*boost*/          0.1,
+        /*noiseAmplitude*/ 0.01
         );
 }
 

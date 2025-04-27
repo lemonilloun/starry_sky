@@ -85,11 +85,13 @@ void MainWindow::buildStarMap()
     double fovY   = fovY_deg   * M_PI / 180.0;
 
     // 3) Проецируем
+    StarCatalog::Sun sunInfo;
     auto starProjections = catalog->projectStars(
         alpha0, dec0, p0,
-        beta1, beta2, p,
-        fovX, fovY,
-        maxMag
+        beta1,  beta2, p,
+        fovX,   fovY,
+        maxMag,
+        sunInfo
         );
 
     // 4) Подготовим данные для StarMapWidget
@@ -122,7 +124,8 @@ void MainWindow::buildStarMap()
         xCoords,
         yCoords,
         mags,
-        ids,               // <-- передаем сюда
+        ids,
+        sunInfo,            // ← pass the computed Sun object
         ui->MapWidget
         );
 

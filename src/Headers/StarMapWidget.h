@@ -1,3 +1,5 @@
+// StarMapWidget.h
+
 #ifndef STARMAPWIDGET_H
 #define STARMAPWIDGET_H
 
@@ -5,17 +7,19 @@
 #include <QImage>
 #include <vector>
 #include <cstdint>
+#include "StarCatalog.h"   // for Sun
 
 class StarMapWidget : public QWidget {
     Q_OBJECT
+
 public:
-    // Теперь принимаем ещё вектор ID-шек
     StarMapWidget(
-        const std::vector<double>& x,
-        const std::vector<double>& y,
-        const std::vector<double>& m,
+        const std::vector<double>&   x,
+        const std::vector<double>&   y,
+        const std::vector<double>&   m,
         const std::vector<uint64_t>& ids,
-        QWidget* parent = nullptr
+        const StarCatalog::Sun&      sunInfo,
+        QWidget*                     parent = nullptr
         );
 
 protected:
@@ -24,10 +28,9 @@ protected:
 private:
     void renderStars();
 
-    std::vector<double>   xCoords;
-    std::vector<double>   yCoords;
-    std::vector<double>   magnitudes;
+    std::vector<double>   xCoords, yCoords, magnitudes;
     std::vector<uint64_t> starIds;
+    StarCatalog::Sun      sun;
 
     QImage starMapImage;
     QImage blurredImage;

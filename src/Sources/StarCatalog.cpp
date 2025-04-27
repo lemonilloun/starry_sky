@@ -180,14 +180,22 @@ void buildTransitionMatrix(const std::array<double,3>& r0_eq, double T[3][3])
 
 // =========================== Основная логика =============================
 
+static constexpr uint64_t SUN_ID = 1010101010;
+
 std::vector<StarProjection> StarCatalog::projectStars(
     double alpha0, double dec0, double p0,
     double beta1,  double beta2, double p,
     double fovX,   double fovY,
-    double maxMagnitude
+    double maxMagnitude,
+    Sun&   outSun        // ← new parameter
     ) const
 {
-    // Шаг 1. Вектор оси визирования r0_eq
+    // --- Prepare the Sun output ---
+    outSun.xi    = 0.0;
+    outSun.eta   = 0.0;
+    outSun.apply = false;
+
+    // 1) Compute initial line–of–sight in equatorial coords
     double cosD0 = std::cos(dec0);
     std::array<double,3> r0_eq = {
         std::cos(alpha0)*cosD0,
@@ -195,49 +203,51 @@ std::vector<StarProjection> StarCatalog::projectStars(
         std::sin(dec0)
     };
 
-    // Шаг 2. Базовая матрица T_noRoll
+    // 2) Build transform T_noRoll
     double T_noRoll[3][3];
     buildTransitionMatrix(r0_eq, T_noRoll);
 
-    // Шаг 3. Учитываем p0 (поворот вокруг z)
+    // 3) Apply initial roll p0 about Z
     double RzP0[3][3], T0[3][3];
     rotationZ(p0, RzP0);
     mul3x3(RzP0, T_noRoll, T0);
 
-    // Шаг 4. Поворот вокруг Oxi, Oeta => Rxy = R_x(beta1) * R_y(beta2).
+    // 4) Tilt by beta1 around X, beta2 around Y
     double Rx[3][3], Ry[3][3], Rxy[3][3];
     rotationX(beta1, Rx);
     rotationY(beta2, Ry);
-
-    double tmpM[3][3];
-    // Порядок: Rxy = R_x * R_y
     mul3x3(Rx, Ry, Rxy);
 
-    // Применяем к (0,0,1)
+    // 5) Compute new equatorial LOS after tilts
     std::array<double,3> oldLoS = {0,0,1};
     auto r1_local = mul3x3_3x1(Rxy, oldLoS);
-
-    // Шаг 5. Переходим обратно в экваториальную: r1_eq = T0^-1 * r1_local
     double T0inv[3][3];
-    invertOrthogonal(T0, T0inv); // T0 - ортогональная => T0^-1 = T0^T
+    invertOrthogonal(T0, T0inv);
     auto r1_eq = mul3x3_3x1(T0inv, r1_local);
 
-    // Шаг 6. Строим новую матрицу T1_noRoll (вместо "noRoll", точнее, без учёта p)
+    // 6) Build final “no-roll” matrix for new LOS
     double T1_noRoll[3][3];
     buildTransitionMatrix(r1_eq, T1_noRoll);
 
-    // А теперь обрабатываем звёзды:
+    // 7) Now project each star
     std::vector<StarProjection> projected;
     projected.reserve(stars.size());
 
-    // Шаг 7. Для каждой звезды:
-    for (auto &star : stars) {
-        // Отбрасываем по величине:
-        if (star.id != 1010101010 && star.magnitude > maxMagnitude) {
-            continue;
-        }
+    double limitX = std::tan(fovX);
+    double limitY = std::tan(fovY);
 
-        // Преобразуем RA,Dec -> декартовы (Xeq, Yeq, Zeq)
+
+    double canvasW = 1081.0;              // or pull from your QImage width
+    double baseRadiusFactor = 1.0;        // same as what you pass to applySunFlare
+    double Rpix = std::max(canvasW, canvasW)*baseRadiusFactor;  // =1081
+    double dXi   = Rpix / (canvasW/2.0);  // = 2.0
+    double dEta  = Rpix / (canvasW/2.0);
+    for (auto &star : stars) {
+
+        if (star.id != SUN_ID && star.magnitude > maxMagnitude)
+            continue;
+
+        // Convert RA/Dec → unit vector in equatorial frame
         double cdec = std::cos(star.dec);
         std::array<double,3> starEq = {
             std::cos(star.ra)*cdec,
@@ -245,10 +255,10 @@ std::vector<StarProjection> StarCatalog::projectStars(
             std::sin(star.dec)
         };
 
-        // Переходим в систему T1_noRoll: starCam = T1_noRoll * starEq
+        // 7a) Rotate into camera frame (no roll)
         auto starCam = mul3x3_3x1(T1_noRoll, starEq);
 
-        // Шаг 8. Вращаем вокруг оси z на угол p:
+        // 7b) Final roll p around z-axis
         double RzP[3][3];
         rotationZ(p, RzP);
         auto starCam2 = mul3x3_3x1(RzP, starCam);
@@ -257,26 +267,46 @@ std::vector<StarProjection> StarCatalog::projectStars(
         double y_ = starCam2[1];
         double z_ = starCam2[2];
 
-        if (star.id != 1010101010 && z_ <= 0) continue;
-
-        // Шаг 9. Проекция: xi = x'/z', eta = y'/z'
-        if (std::fabs(z_) < 1e-12) {
-            // Звезда на "горизонте" => пропускаем
+        // If not Sun and behind camera, skip
+        if (star.id != SUN_ID && z_ <= 0.0)
             continue;
-        }
+
+        // Project onto plane
+        if (std::fabs(z_) < 1e-12)
+            continue;
         double xi  = x_ / z_;
         double eta = y_ / z_;
 
+        // If this is our Sun, record its xi/eta and mark apply = true
+        if (star.id == SUN_ID) {
+            outSun.xi  = xi;
+            outSun.eta = eta;
 
-        // Шаг 10. Ограничиваем поле зрения (fovX,fovY).
-        // Предположим, fovX,fovY - это "полуширина" в радианах => |xi| < tan(fovX).
-        double limitX = std::tan(fovX);
-        double limitY = std::tan(fovY);
+            // distance in ξ to the LEFT border (ξ = -limitX)
+            double distLeft   = std::fabs( xi + limitX );
+            // distance in ξ to the RIGHT border (ξ = +limitX)
+            double distRight  = std::fabs( limitX - xi );
+            // distance in η to the BOTTOM border (η = -limitY)
+            double distBottom = std::fabs( eta + limitY );
+            // distance in η to the TOP border (η = +limitY)
+            double distTop    = std::fabs( limitY - eta );
 
-        if (std::fabs(xi) > limitX || std::fabs(eta) > limitY) {
-                continue;
+            // if any of those four distances is ≤ flare‐radius, we still get some glow
+            if (distLeft   <= dXi ||
+                distRight  <= dXi ||
+                distBottom <= dEta ||
+                distTop    <= dEta)
+            {
+                outSun.apply = true;
             }
+        }
 
+        // Field-of-view clipping
+        if (std::fabs(xi) > limitX || std::fabs(eta) > limitY)
+            continue;
+
+
+        // Finally add to the list
         StarProjection pr;
         pr.x         = xi;
         pr.y         = eta;
@@ -285,13 +315,15 @@ std::vector<StarProjection> StarCatalog::projectStars(
         projected.push_back(pr);
     }
 
-    for (const auto &pr : projected) {
-        std::cout << "Star in FOV => ID=" << pr.starId << " xi:" << pr.x << " eta:" <<pr.y << std::endl;
-    }
+    std::cout << "Sun= " <<outSun.apply << "\n";
 
-    std::cout << "[INFO] projectStars: total = " << stars.size()
-              << ", after magnitude => ???, final in fov => "
-              << projected.size() << std::endl;
+    // Debug print
+    for (auto &pr : projected) {
+        std::cout << "Star in FOV => ID=" << pr.starId
+                  << " xi:" << pr.x << " eta:" << pr.y << "\n";
+    }
+    std::cout << "[INFO] projectStars: total=" << stars.size()
+              << ", projected=" << projected.size() << "\n";
 
     return projected;
 }

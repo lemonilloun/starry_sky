@@ -28,12 +28,19 @@ public:
     explicit StarCatalog(const std::string& filename);
     void loadFromFile(const std::string& filename);
 
+    struct Sun {
+        double xi;      // координаты солнца на плоскости (xi)
+        double eta;     // координаты солнца на плоскости (eta)
+        bool   apply;   // нужно ли рисовать flare
+    };
+
     // Новый метод проекции
     std::vector<StarProjection> projectStars(
         double alpha0, double dec0, double p0,
         double beta1,  double beta2, double p,
         double fovX,   double fovY,
-        double maxMagnitude
+        double maxMagnitude,
+        Sun&   outSun
         ) const;
 
 private:

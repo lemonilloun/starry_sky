@@ -24,6 +24,12 @@ public:
         double maxRayLengthFactor = 1.0,
         double coreRadius         = 45
         );
+
+    static QImage applyGlobalBoost(
+        const QImage& image,
+        double boost         = 0.02,
+        double noiseAmplitude = 0.01
+        );
 };
 
 #endif // LIGHTPOLLUTION_H

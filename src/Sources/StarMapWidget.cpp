@@ -72,6 +72,12 @@ StarMapWidget::StarMapWidget(
             }
         }
     }
+
+    blurredImage = LightPollution::applyGlobalBoost(
+        blurredImage,
+        /*boost*/         0.1,
+        /*noiseAmplitude*/0.01
+        );
 }
 
 void StarMapWidget::renderStars()

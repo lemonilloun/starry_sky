@@ -134,3 +134,34 @@ QImage LightPollution::applySunFlare(
 
     return result;
 }
+
+QImage LightPollution::applyGlobalBoost(
+    const QImage& image,
+    double boost,
+    double noiseAmplitude
+    ) {
+    int W = image.width();
+    int H = image.height();
+    QImage result = image.convertToFormat(QImage::Format_Grayscale8);
+
+    for (int y = 0; y < H; ++y) {
+        uchar* scan = result.scanLine(y);
+        for (int x = 0; x < W; ++x) {
+            // текущая яркость
+            int v = scan[x];
+
+            // + небольшой «серый» буст
+            double vf = v + boost * 255.0;
+
+            // + шум в диапазоне [-noiseAmplitude, +noiseAmplitude]
+            double noise = (QRandomGenerator::global()->generateDouble() * 2.0 - 1.0)
+                           * noiseAmplitude * 255.0;
+            int v2 = std::lround(vf + noise);
+
+            // clamp 0..255
+            scan[x] = static_cast<uchar>(qBound(0, v2, 255));
+        }
+    }
+
+    return result;
+}

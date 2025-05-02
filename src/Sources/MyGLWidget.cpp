@@ -93,7 +93,6 @@ void MyGLWidget::paintGL()
     // Теперь выводим 2D-текст (подпись) с помощью QPainter
     QPainter painter(this);
     painter.setPen(Qt::white);
-    painter.drawText(5, 10, "X=red, Y=green, Z=blue");
     painter.end();
 }
 

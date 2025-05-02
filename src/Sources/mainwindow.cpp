@@ -2,7 +2,7 @@
 #include "ui_MainWindow.h"
 #include "StarCatalog.h"
 #include "StarMapWidget.h"
-
+#include "SettingsDialog.h"
 #include <QVBoxLayout>
 #include <QMessageBox>
 #include <QDebug>
@@ -13,6 +13,8 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , catalog(std::make_unique<StarCatalog>("/Users/lehacho/starry_sky/src/data/Catalogue_clean.csv"))
+    , m_blurParams   { 13,   2.0, 1.0, 0.75 }
+    , m_flareParams  { 0.6,  1.2, 128, 0.2, 0.3, 52.0 }
 {
     ui->setupUi(this);
 
@@ -58,6 +60,17 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+void MainWindow::on_settingsButton_clicked() {
+    SettingsDialog dlg(this);
+    dlg.setBlurParams (m_blurParams);
+    dlg.setFlareParams(m_flareParams);
+    if (dlg.exec() == QDialog::Accepted) {
+        m_blurParams  = dlg.blurParams();
+        m_flareParams = dlg.flareParams();
+        buildStarMap();
+    }
 }
 
 void MainWindow::buildStarMap()
@@ -126,6 +139,8 @@ void MainWindow::buildStarMap()
         mags,
         ids,
         sunInfo,            // ← pass the computed Sun object
+        m_blurParams,
+        m_flareParams,
         ui->MapWidget
         );
 

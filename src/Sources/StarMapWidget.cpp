@@ -16,13 +16,17 @@ StarMapWidget::StarMapWidget(
     const std::vector<double>&   m,
     const std::vector<uint64_t>& ids,
     const StarCatalog::Sun&      sunInfo,
+    const BlurParams            blurParams,
+    const FlareParams           flareParams,
     QWidget*                     parent
     ) : QWidget(parent),
     xCoords(x),
     yCoords(y),
     magnitudes(m),
     starIds(ids),
-    sun(sunInfo)
+    sun(sunInfo),
+    blurParams(blurParams),
+    flareParams(flareParams)
 {
     // 1) чёрно-белый холст
     starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
@@ -34,10 +38,10 @@ StarMapWidget::StarMapWidget(
     // 3) размытие Гауссом
     blurredImage = GaussianBlur::applyGaussianBlur(
         starMapImage,
-        /*kernelSize=*/13,
-        /*sigmaX=*/2.0,
-        /*sigmaY=*/1.0,
-        /*rho=*/0.75
+        /*kernelSize=*/blurParams.kernelSize,
+        /*sigmaX=*/blurParams.sigmaX,
+        /*sigmaY=*/blurParams.sigmaY,
+        /*rho=*/blurParams.rho
         );
 
     // 4) если Солнце «попало» (sun.apply==true), рисуем flare,
@@ -75,8 +79,8 @@ StarMapWidget::StarMapWidget(
                 double frac = overlap / Rpix_full;  // 1.0 в центре → 0 по краю
 
                 // уменьшаем и радиус, и яркость пропорционально frac
-                double effRadiusFactor = frac * 1.2;  // чуть «раздуваем» чуть-чуть
-                double effIntensity    = frac * 0.6;  // базовая яркость
+                double effRadiusFactor = frac * flareParams.baseRadiusFactor;  // чуть «раздуваем» чуть-чуть
+                double effIntensity    = frac * flareParams.baseIntensity;  // базовая яркость
 
                 blurredImage = LightPollution::applySunFlare(
                     blurredImage,
@@ -84,10 +88,10 @@ StarMapWidget::StarMapWidget(
                     sunYpix,
                     /*baseIntensity=*/     effIntensity,
                     /*baseRadiusFactor=*/  effRadiusFactor,
-                    /*numRays=*/           128,
-                    /*rayIntensity=*/      0.2,
-                    /*maxRayLengthFactor=*/0.3,
-                    /*coreRadius=*/        52.0
+                    /*numRays=*/           flareParams.numRays,
+                    /*rayIntensity=*/      flareParams.rayIntensity,
+                    /*maxRayLengthFactor=*/flareParams.maxRayLengthFactor,
+                    /*coreRadius=*/        flareParams.coreRadius
                     );
             }
         }

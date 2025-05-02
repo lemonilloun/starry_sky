@@ -10,6 +10,7 @@ SOURCES += \
     src/Sources/GaussianBlur.cpp \
     src/Sources/LightPollution.cpp \
     src/Sources/MyGLWidget.cpp \
+    src/Sources/SettingsDialog.cpp \
     src/Sources/StarCatalog.cpp \
     src/Sources/StarMapWidget.cpp \
     src/Sources/main.cpp \
@@ -20,6 +21,7 @@ HEADERS += \
     src/Headers/GaussianBlur.h \
     src/Headers/LightPollution.h \
     src/Headers/MyGLWidget.h \
+    src/Headers/SettingsDialog.h \
     src/Headers/StarCatalog.h \
     src/Headers/StarMapWidget.h \
     src/Headers/mainwindow.h

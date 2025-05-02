@@ -7,7 +7,8 @@
 #include <QImage>
 #include <vector>
 #include <cstdint>
-#include "StarCatalog.h"   // for Sun
+#include "StarCatalog.h"
+#include "SettingsDialog.h"
 
 class StarMapWidget : public QWidget {
     Q_OBJECT
@@ -19,6 +20,8 @@ public:
         const std::vector<double>&   m,
         const std::vector<uint64_t>& ids,
         const StarCatalog::Sun&      sunInfo,
+        BlurParams            blurParams,   // новые
+        FlareParams           flareParams,  // новые
         QWidget*                     parent = nullptr
         );
 
@@ -31,6 +34,8 @@ private:
     std::vector<double>   xCoords, yCoords, magnitudes;
     std::vector<uint64_t> starIds;
     StarCatalog::Sun      sun;
+    BlurParams            blurParams;   // новые
+    FlareParams           flareParams;  // новые
 
     QImage starMapImage;
     QImage blurredImage;

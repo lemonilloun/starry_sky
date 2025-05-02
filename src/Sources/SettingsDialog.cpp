@@ -4,6 +4,7 @@
 #include <QLabel>
 #include <QDoubleSpinBox>
 #include <QDialogButtonBox>
+#include <QCheckBox>
 
 SettingsDialog::SettingsDialog(QWidget* parent)
     : QDialog(parent)
@@ -16,34 +17,43 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     // Добавляем заголовок-сепаратор
     form->addRow(new QLabel("<b>Параметры Гауссова фильтра</b>"));
 
+    // чекбокс включения/выключения размытия
+    m_blurEnabled = new QCheckBox("Активировать размытие");
+    m_blurEnabled->setChecked(true);
+    form->addRow(m_blurEnabled);
+
     // kernelSize — размер ядра свёртки (радиус размытия в px, обычно нечетное число)
     m_kernelSize = new QSpinBox;
     m_kernelSize->setRange(1, 101);
     m_kernelSize->setValue(13);
-    form->addRow("Размер ядра (kernelSize)", m_kernelSize);
+    form->addRow("Размер ядра свёртки", m_kernelSize);
 
     // sigmaX — стандартное отклонение по оси X (чем больше, тем сильнее размытие)
     m_sigmaX = new QDoubleSpinBox;
     m_sigmaX->setRange(0.1, 10.0);
     m_sigmaX->setValue(2.0);
-    form->addRow("σ по X (sigmaX)", m_sigmaX);
+    form->addRow("σ_x (направлени смаза по X)", m_sigmaX);
 
     // sigmaY — стандартное отклонение по оси Y
     m_sigmaY = new QDoubleSpinBox;
     m_sigmaY->setRange(0.1, 10.0);
     m_sigmaY->setValue(1.0);
-    form->addRow("σ по Y (sigmaY)", m_sigmaY);
+    form->addRow("σ_Y (направлени смаза по Y)", m_sigmaY);
 
     // rho — коэффициент корреляции осей (0 = независимые фильтры, 1 = одинаковые)
     m_rho = new QDoubleSpinBox;
     m_rho->setRange(0.0, 1.0);
     m_rho->setValue(0.75);
-    form->addRow("ρ (rho)", m_rho);
+    form->addRow("ρ (степень смаза)", m_rho);
 
     //
     // === Секция 2: Параметры засветки (flare) ===
     //
     form->addRow(new QLabel("<b>Параметры засветки</b>"));
+
+    m_flareEnabled = new QCheckBox("Активировать засветку");
+    m_flareEnabled->setChecked(true);
+    form->addRow(m_flareEnabled);
 
     // baseIntensity — начальная (центральная) яркость ореола [0..1]
     m_baseIntensity = new QDoubleSpinBox;
@@ -55,7 +65,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     m_baseRadiusFactor = new QDoubleSpinBox;
     m_baseRadiusFactor->setRange(0.1, 2.0);
     m_baseRadiusFactor->setValue(1.0);
-    form->addRow("Радиус ореола (factor)", m_baseRadiusFactor);
+    form->addRow("Радиус ореола", m_baseRadiusFactor);
 
     // numRays — количество «лучей» блика
     m_numRays = new QSpinBox;
@@ -73,13 +83,13 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     m_maxRayLengthFactor = new QDoubleSpinBox;
     m_maxRayLengthFactor->setRange(0.0, 1.0);
     m_maxRayLengthFactor->setValue(0.3);
-    form->addRow("Длина лучей (factor)", m_maxRayLengthFactor);
+    form->addRow("Длина лучей", m_maxRayLengthFactor);
 
     // coreRadius — радиус твёрдого светящегося ядра (px)
     m_coreRadius = new QDoubleSpinBox;
     m_coreRadius->setRange(1.0, 200.0);
     m_coreRadius->setValue(52.0);
-    form->addRow("Радиус ядра (px)", m_coreRadius);
+    form->addRow("Радиус ядра Солнца", m_coreRadius);
 
     // Кнопки ОК/Отмена
     m_buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -123,3 +133,9 @@ void SettingsDialog::setFlareParams(const FlareParams& p) {
     m_maxRayLengthFactor->setValue(p.maxRayLengthFactor);
     m_coreRadius       ->setValue(p.coreRadius);
 }
+
+// методы доступа к чекбоксам:
+bool SettingsDialog::blurEnabled()  const { return m_blurEnabled->isChecked(); }
+void SettingsDialog::setBlurEnabled(bool e)   { m_blurEnabled->setChecked(e); }
+bool SettingsDialog::flareEnabled() const { return m_flareEnabled->isChecked(); }
+void SettingsDialog::setFlareEnabled(bool e) { m_flareEnabled->setChecked(e); }

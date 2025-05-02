@@ -17,7 +17,10 @@ StarMapWidget::StarMapWidget(
     const std::vector<uint64_t>& ids,
     const StarCatalog::Sun&      sunInfo,
     const BlurParams            blurParams,
+    bool                         blurEnabled,
     const FlareParams           flareParams,
+    bool                         flareEnabled,
+
     QWidget*                     parent
     ) : QWidget(parent),
     xCoords(x),
@@ -26,7 +29,9 @@ StarMapWidget::StarMapWidget(
     starIds(ids),
     sun(sunInfo),
     blurParams(blurParams),
-    flareParams(flareParams)
+    m_blurEnabled(blurEnabled),
+    flareParams(flareParams),
+    m_flareEnabled(flareEnabled)
 {
     // 1) чёрно-белый холст
     starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
@@ -36,17 +41,21 @@ StarMapWidget::StarMapWidget(
     renderStars();
 
     // 3) размытие Гауссом
-    blurredImage = GaussianBlur::applyGaussianBlur(
-        starMapImage,
-        /*kernelSize=*/blurParams.kernelSize,
-        /*sigmaX=*/blurParams.sigmaX,
-        /*sigmaY=*/blurParams.sigmaY,
-        /*rho=*/blurParams.rho
-        );
+    if (m_blurEnabled) {
+        blurredImage = GaussianBlur::applyGaussianBlur(
+            starMapImage,
+            /*kernelSize=*/blurParams.kernelSize,
+            /*sigmaX=*/blurParams.sigmaX,
+            /*sigmaY=*/blurParams.sigmaY,
+            /*rho=*/blurParams.rho
+            );
+    } else {
+        blurredImage = starMapImage;
+    }
 
     // 4) если Солнце «попало» (sun.apply==true), рисуем flare,
     //    который плавно сужается/тускнеет по мере удаления из кадра
-    if (sun.apply) {
+    if (m_flareEnabled && sun.apply) {
         int W = blurredImage.width();
         int H = blurredImage.height();
 

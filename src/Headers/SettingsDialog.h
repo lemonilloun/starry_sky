@@ -4,6 +4,7 @@
 class QSpinBox;
 class QDoubleSpinBox;
 class QDialogButtonBox;
+class QCheckBox;
 
 struct FlareParams {
     double baseIntensity;
@@ -29,17 +30,26 @@ public:
     BlurParams  blurParams() const;
     FlareParams flareParams() const;
 
+    bool blurEnabled()  const;
+    bool flareEnabled() const;
+
+    void setBlurEnabled(bool  e);
+    void setFlareEnabled(bool e);
+
     void setBlurParams (const BlurParams& p);
     void setFlareParams(const FlareParams& p);
 
+
 private:
     // Виджеты для размытия
+    QCheckBox*       m_blurEnabled;
     QSpinBox*       m_kernelSize;
     QDoubleSpinBox* m_sigmaX;
     QDoubleSpinBox* m_sigmaY;
     QDoubleSpinBox* m_rho;
 
     // Виджеты для flare
+    QCheckBox*       m_flareEnabled;
     QDoubleSpinBox* m_baseIntensity;
     QDoubleSpinBox* m_baseRadiusFactor;
     QSpinBox*       m_numRays;

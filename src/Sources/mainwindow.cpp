@@ -15,6 +15,8 @@ MainWindow::MainWindow(QWidget *parent)
     , catalog(std::make_unique<StarCatalog>("/Users/lehacho/starry_sky/src/data/Catalogue_clean.csv"))
     , m_blurParams   { 13,   2.0, 1.0, 0.75 }
     , m_flareParams  { 0.6,  1.2, 128, 0.2, 0.3, 52.0 }
+    , m_blurEnabled(true)
+    , m_flareEnabled(true)
 {
     ui->setupUi(this);
 
@@ -65,10 +67,14 @@ MainWindow::~MainWindow()
 void MainWindow::on_settingsButton_clicked() {
     SettingsDialog dlg(this);
     dlg.setBlurParams (m_blurParams);
+    dlg.setBlurEnabled(m_blurEnabled);
     dlg.setFlareParams(m_flareParams);
+    dlg.setFlareEnabled(m_flareEnabled);
     if (dlg.exec() == QDialog::Accepted) {
         m_blurParams  = dlg.blurParams();
         m_flareParams = dlg.flareParams();
+        m_blurEnabled  = dlg.blurEnabled();
+        m_flareEnabled = dlg.flareEnabled();
         buildStarMap();
     }
 }
@@ -140,7 +146,9 @@ void MainWindow::buildStarMap()
         ids,
         sunInfo,            // ← pass the computed Sun object
         m_blurParams,
+        m_blurEnabled,
         m_flareParams,
+        m_flareEnabled,
         ui->MapWidget
         );
 

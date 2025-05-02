@@ -32,6 +32,9 @@ private:
 
     BlurParams  m_blurParams;
     FlareParams m_flareParams;
+
+    bool        m_blurEnabled;
+    bool        m_flareEnabled;
 };
 
 #endif // MAINWINDOW_H

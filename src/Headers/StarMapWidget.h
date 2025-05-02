@@ -20,8 +20,10 @@ public:
         const std::vector<double>&   m,
         const std::vector<uint64_t>& ids,
         const StarCatalog::Sun&      sunInfo,
-        BlurParams            blurParams,   // новые
-        FlareParams           flareParams,  // новые
+        BlurParams            blurParams,
+        bool                         blurEnabled,
+        FlareParams           flareParams,
+        bool                         flareEnabled,
         QWidget*                     parent = nullptr
         );
 
@@ -34,8 +36,10 @@ private:
     std::vector<double>   xCoords, yCoords, magnitudes;
     std::vector<uint64_t> starIds;
     StarCatalog::Sun      sun;
-    BlurParams            blurParams;   // новые
-    FlareParams           flareParams;  // новые
+    BlurParams            blurParams;
+    bool        m_blurEnabled;
+    FlareParams           flareParams;
+    bool        m_flareEnabled;
 
     QImage starMapImage;
     QImage blurredImage;

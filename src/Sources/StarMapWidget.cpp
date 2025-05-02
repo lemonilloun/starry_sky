@@ -54,7 +54,6 @@ StarMapWidget::StarMapWidget(
     }
 
     // 4) если Солнце «попало» (sun.apply==true), рисуем flare,
-    //    который плавно сужается/тускнеет по мере удаления из кадра
     if (m_flareEnabled && sun.apply) {
         int W = blurredImage.width();
         int H = blurredImage.height();

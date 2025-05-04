@@ -17,33 +17,33 @@
    <widget class="QLabel" name="ra_label">
     <property name="geometry">
      <rect>
-      <x>1100</x>
+      <x>1120</x>
       <y>80</y>
       <width>141</width>
       <height>16</height>
      </rect>
     </property>
     <property name="text">
-     <string>Observer RA (radians)</string>
+     <string>RA (радианы)</string>
     </property>
    </widget>
    <widget class="QLabel" name="label">
     <property name="geometry">
      <rect>
-      <x>1100</x>
+      <x>1120</x>
       <y>110</y>
-      <width>141</width>
+      <width>131</width>
       <height>16</height>
      </rect>
     </property>
     <property name="text">
-     <string>Observer Dec (radians)</string>
+     <string> Dec (радианы)</string>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="observerRaSpinBox">
     <property name="geometry">
      <rect>
-      <x>1260</x>
+      <x>1240</x>
       <y>80</y>
       <width>91</width>
       <height>22</height>
@@ -62,7 +62,7 @@
    <widget class="QDoubleSpinBox" name="observerDecSpinBox">
     <property name="geometry">
      <rect>
-      <x>1260</x>
+      <x>1240</x>
       <y>110</y>
       <width>91</width>
       <height>22</height>
@@ -154,7 +154,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Field of View X (degrees)</string>
+     <string>Область X (градусы)</string>
     </property>
    </widget>
    <widget class="QLabel" name="label_6">
@@ -167,7 +167,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Field of View Y (degrees)</string>
+     <string>Область Y (градусы)</string>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="fovXSpinBox">

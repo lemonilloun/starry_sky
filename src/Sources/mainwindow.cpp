@@ -162,5 +162,5 @@ void MainWindow::onAnglesChanged()
     double psi_deg   = ui->beta2SpinBox->value();
     double phi_deg   = ui->pSpinBox->value();
 
-    ui->GLWidget->setAngles(theta_deg, psi_deg, phi_deg);
+    ui->GLWidget->setAngles(-theta_deg, psi_deg, phi_deg);
 }

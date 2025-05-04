@@ -76,7 +76,7 @@ void MyGLWidget::paintGL()
     glBegin(GL_LINES);
     // X — красная
     glColor3f(1,0,0);
-    glVertex3f(0,0,0); glVertex3f(2,0,0);
+    glVertex3f(0,0,0); glVertex3f(3,0,0);
 
     // Y — зелёная
     glColor3f(0,1,0);
@@ -84,7 +84,7 @@ void MyGLWidget::paintGL()
 
     // Z — синяя
     glColor3f(0,0,1);
-    glVertex3f(0,0,0); glVertex3f(0,0,2);
+    glVertex3f(0,0,0); glVertex3f(0,0,2.5);
     glEnd();
 
     // Рисуем две плоскости-«прямоугольника»
@@ -98,25 +98,148 @@ void MyGLWidget::paintGL()
 
 void MyGLWidget::drawSensorModel()
 {
-    // Примитивный способ: нарисуем 2 плоскости (квадрата),
-    // перпендикулярных друг другу: один в плоскости XZ, другой в плоскости YZ.
-    // И оба пересекаются по оси Z (к примеру).
+    // размеры «тела» сенсора (синяя часть)
+    const float bodyHalfThickness = 0.5f;  // толщина по X
+    const float bodyHalfHeight    = 0.5f;  // по Y
+    const float bodyHalfDepth     = 0.7f;  // по Z
 
-    // Первый «прямоугольник» (квадрат) в плоскости XZ, центр в (0,0,0), размер 1x1
-    glColor3f(0.9f, 0.9f, 0.0f); // желтоватый
+    // рисуем синий «бокс» – 6 граней кубоида
+    glColor3f(0.0f, 0.8f, 0.8f); // бирюзовый
     glBegin(GL_QUADS);
-    glVertex3f(-0.5f, 0.0f, -0.5f);
-    glVertex3f( 0.5f, 0.0f, -0.5f);
-    glVertex3f( 0.5f, 0.0f,  0.5f);
-    glVertex3f(-0.5f, 0.0f,  0.5f);
+    // передняя грань (X = +bodyHalfThickness)
+    glVertex3f( bodyHalfThickness, -bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f( bodyHalfThickness,  bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f( bodyHalfThickness,  bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f( bodyHalfThickness, -bodyHalfHeight,  bodyHalfDepth);
+    // задняя грань (X = -bodyHalfThickness)
+    glVertex3f(-bodyHalfThickness, -bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f(-bodyHalfThickness,  bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f(-bodyHalfThickness,  bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f(-bodyHalfThickness, -bodyHalfHeight, -bodyHalfDepth);
+    // верхняя грань (Y = +bodyHalfHeight)
+    glVertex3f(-bodyHalfThickness,  bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f( bodyHalfThickness,  bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f( bodyHalfThickness,  bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f(-bodyHalfThickness,  bodyHalfHeight,  bodyHalfDepth);
+    // нижняя грань (Y = -bodyHalfHeight)
+    glVertex3f(-bodyHalfThickness, -bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f( bodyHalfThickness, -bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f( bodyHalfThickness, -bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f(-bodyHalfThickness, -bodyHalfHeight, -bodyHalfDepth);
+    // правая грань (Z = +bodyHalfDepth)
+    glVertex3f(-bodyHalfThickness, -bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f(-bodyHalfThickness,  bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f( bodyHalfThickness,  bodyHalfHeight,  bodyHalfDepth);
+    glVertex3f( bodyHalfThickness, -bodyHalfHeight,  bodyHalfDepth);
+    // левая грань (Z = -bodyHalfDepth)
+    glVertex3f( bodyHalfThickness, -bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f( bodyHalfThickness,  bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f(-bodyHalfThickness,  bodyHalfHeight, -bodyHalfDepth);
+    glVertex3f(-bodyHalfThickness, -bodyHalfHeight, -bodyHalfDepth);
     glEnd();
 
-    // Второй «прямоугольник» (квадрат) в плоскости YZ, пересекающийся по оси Z
-    glColor3f(0.0f, 0.8f, 0.8f); // бирюзоватый
-    glBegin(GL_QUADS);
-    glVertex3f(0.0f, -0.5f, -0.5f);
-    glVertex3f(0.0f,  0.5f, -0.5f);
-    glVertex3f(0.0f,  0.5f,  0.5f);
-    glVertex3f(0.0f, -0.5f,  0.5f);
-    glEnd();
+    // толщину выдавливания задаём единожды
+    const float panelDepth = 0.3f;
+    const float halfDepth  = panelDepth * 0.5f;
+
+    // === жёлтые боковые панели ===
+    {
+        const float extraLen       = 0.3f;                   // на сколько выступает
+        const float panelHalfLen   = 0.5f + extraLen;        // полуширина по X
+        const float panelHalfHei   = 0.1f;                   // полуполовина по Y
+
+        glColor3f(0.9f, 0.9f, 0.0f);
+        for (int side : {-1, +1}) {
+            // смещение центра панели вдоль X
+            float cx = side * (bodyHalfThickness + panelHalfLen);
+            // координаты по X,Y
+            float x0 = cx - panelHalfLen, x1 = cx + panelHalfLen;
+            float y0 = -panelHalfHei,     y1 = +panelHalfHei;
+            // Z-координаты для «передней» и «задней» граней
+            float z0 = -halfDepth,        z1 = +halfDepth;
+
+            // 6 граней тонкого параллелепипеда:
+            glBegin(GL_QUADS);
+            // передняя грань (Z = +halfDepth)
+            glVertex3f(x0, y0, z1);
+            glVertex3f(x1, y0, z1);
+            glVertex3f(x1, y1, z1);
+            glVertex3f(x0, y1, z1);
+            // задняя грань (Z = -halfDepth)
+            glVertex3f(x1, y0, z0);
+            glVertex3f(x0, y0, z0);
+            glVertex3f(x0, y1, z0);
+            glVertex3f(x1, y1, z0);
+            // правая грань
+            glVertex3f(x1, y0, z1);
+            glVertex3f(x1, y0, z0);
+            glVertex3f(x1, y1, z0);
+            glVertex3f(x1, y1, z1);
+            // левая грань
+            glVertex3f(x0, y0, z0);
+            glVertex3f(x0, y0, z1);
+            glVertex3f(x0, y1, z1);
+            glVertex3f(x0, y1, z0);
+            // верхняя грань
+            glVertex3f(x0, y1, z1);
+            glVertex3f(x1, y1, z1);
+            glVertex3f(x1, y1, z0);
+            glVertex3f(x0, y1, z0);
+            // нижняя грань
+            glVertex3f(x0, y0, z0);
+            glVertex3f(x1, y0, z0);
+            glVertex3f(x1, y0, z1);
+            glVertex3f(x0, y0, z1);
+            glEnd();
+        }
+    }
+
+    // === фиолетовые доп-панели ===
+    {
+        const float violetLen    = 1.0f;   // длина по X
+        const float violetHei    = 1.5f;   // высота по Y
+        const float halfLen      = violetLen * 0.5f;
+        const float halfHei      = violetHei * 0.5f;
+
+        glColor3f(0.6f, 0.0f, 0.6f);
+        for (int side : {-1, +1}) {
+            float cx = side * (bodyHalfThickness + /*жёлтая полупанель*/ (0.5f + 0.3f) + halfLen);
+            float x0 = cx - halfLen, x1 = cx + halfLen;
+            float y0 = -halfHei,     y1 = +halfHei;
+            float z0 = -halfDepth,   z1 = +halfDepth;
+
+            glBegin(GL_QUADS);
+            // передняя
+            glVertex3f(x0, y0, z1);
+            glVertex3f(x1, y0, z1);
+            glVertex3f(x1, y1, z1);
+            glVertex3f(x0, y1, z1);
+            // задняя
+            glVertex3f(x1, y0, z0);
+            glVertex3f(x0, y0, z0);
+            glVertex3f(x0, y1, z0);
+            glVertex3f(x1, y1, z0);
+            // правая
+            glVertex3f(x1, y0, z1);
+            glVertex3f(x1, y0, z0);
+            glVertex3f(x1, y1, z0);
+            glVertex3f(x1, y1, z1);
+            // левая
+            glVertex3f(x0, y0, z0);
+            glVertex3f(x0, y0, z1);
+            glVertex3f(x0, y1, z1);
+            glVertex3f(x0, y1, z0);
+            // верхняя
+            glVertex3f(x0, y1, z1);
+            glVertex3f(x1, y1, z1);
+            glVertex3f(x1, y1, z0);
+            glVertex3f(x0, y1, z0);
+            // нижняя
+            glVertex3f(x0, y0, z0);
+            glVertex3f(x1, y0, z0);
+            glVertex3f(x1, y0, z1);
+            glVertex3f(x0, y0, z1);
+            glEnd();
+        }
+    }
 }

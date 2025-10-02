@@ -25,8 +25,7 @@ void MyGLWidget::initializeGL()
     // Инициализация OpenGL-функций
     initializeOpenGLFunctions();
 
-    // Устанавливаем цвет фона (глубокий серый, скажем)
-    glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+   glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 
     // Включаем тест глубины (чтобы 3D-объекты рисовались правильно)
     glEnable(GL_DEPTH_TEST);
@@ -73,17 +72,20 @@ void MyGLWidget::paintGL()
     glRotatef(float(m_psi),   0.f, 1.f, 0.f);
     glRotatef(float(m_theta), 1.f, 0.f, 0.f);
 
+    // Рисуем утолщённые оси
+    glLineWidth(10.0f);
+
     glBegin(GL_LINES);
     // X — красная
-    glColor3f(1,0,0);
+    glColor3f(1.0f, 0.0f, 0.0f);
     glVertex3f(0,0,0); glVertex3f(3,0,0);
 
     // Y — зелёная
-    glColor3f(0,1,0);
+    glColor3f(0.0f, 1.0f, 0.0f);
     glVertex3f(0,0,0); glVertex3f(0,2,0);
 
     // Z — синяя
-    glColor3f(0,0,1);
+    glColor3f(0.0f, 0.0f, 1.0f);
     glVertex3f(0,0,0); glVertex3f(0,0,2.5);
     glEnd();
 

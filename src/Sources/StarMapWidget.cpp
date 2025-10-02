@@ -132,6 +132,8 @@ void StarMapWidget::renderStars()
     double cy    = 0.5*(minY + maxY);
     double scale = std::min(W/dx, H/dy);
 
+    const double starSizeFactor = 2.0;
+
     // 2) рисуем все точки
     for (size_t i = 0; i < xCoords.size(); ++i) {
         double x = xCoords[i], y = yCoords[i], m = magnitudes[i];
@@ -150,7 +152,8 @@ void StarMapWidget::renderStars()
             // обычная звезда
             double bf = 27.0 / std::pow(2.512, m);
             int    br = std::clamp(int(bf*255.0), 40, 255);
-            double r  = std::clamp(1.5*std::sqrt(bf), 1.0, 4.0);
+            double baseR = std::clamp(1.5*std::sqrt(bf), 1.0, 4.0);
+            double r     = baseR * starSizeFactor;
 
             QColor col(br, br, br);
             p.setPen(Qt::NoPen);

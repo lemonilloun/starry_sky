@@ -17,10 +17,10 @@
    <widget class="QLabel" name="ra_label">
     <property name="geometry">
      <rect>
-      <x>1120</x>
-      <y>80</y>
-      <width>141</width>
-      <height>16</height>
+      <x>1100</x>
+      <y>70</y>
+      <width>161</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -30,10 +30,10 @@
    <widget class="QLabel" name="label">
     <property name="geometry">
      <rect>
-      <x>1120</x>
-      <y>110</y>
-      <width>131</width>
-      <height>16</height>
+      <x>1090</x>
+      <y>100</y>
+      <width>151</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -44,9 +44,9 @@
     <property name="geometry">
      <rect>
       <x>1240</x>
-      <y>80</y>
-      <width>91</width>
-      <height>22</height>
+      <y>71</y>
+      <width>101</width>
+      <height>21</height>
      </rect>
     </property>
     <property name="decimals">
@@ -63,9 +63,9 @@
     <property name="geometry">
      <rect>
       <x>1240</x>
-      <y>110</y>
-      <width>91</width>
-      <height>22</height>
+      <y>100</y>
+      <width>101</width>
+      <height>21</height>
      </rect>
     </property>
     <property name="decimals">
@@ -81,10 +81,10 @@
    <widget class="QLabel" name="label_2">
     <property name="geometry">
      <rect>
-      <x>1140</x>
-      <y>60</y>
-      <width>191</width>
-      <height>16</height>
+      <x>1110</x>
+      <y>40</y>
+      <width>231</width>
+      <height>21</height>
      </rect>
     </property>
     <property name="text">
@@ -94,10 +94,10 @@
    <widget class="QLabel" name="label_3">
     <property name="geometry">
      <rect>
-      <x>1150</x>
-      <y>150</y>
-      <width>191</width>
-      <height>16</height>
+      <x>1140</x>
+      <y>140</y>
+      <width>231</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -107,10 +107,10 @@
    <widget class="QLabel" name="label_4">
     <property name="geometry">
      <rect>
-      <x>1100</x>
+      <x>1090</x>
       <y>360</y>
-      <width>311</width>
-      <height>51</height>
+      <width>331</width>
+      <height>61</height>
      </rect>
     </property>
     <property name="text">
@@ -122,8 +122,8 @@
     <property name="geometry">
      <rect>
       <x>1290</x>
-      <y>380</y>
-      <width>51</width>
+      <y>390</y>
+      <width>61</width>
       <height>22</height>
      </rect>
     </property>
@@ -136,7 +136,7 @@
      <rect>
       <x>1270</x>
       <y>200</y>
-      <width>61</width>
+      <width>71</width>
       <height>22</height>
      </rect>
     </property>
@@ -147,10 +147,10 @@
    <widget class="QLabel" name="ra_label_2">
     <property name="geometry">
      <rect>
-      <x>1110</x>
+      <x>1090</x>
       <y>170</y>
-      <width>151</width>
-      <height>16</height>
+      <width>171</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -160,10 +160,10 @@
    <widget class="QLabel" name="label_6">
     <property name="geometry">
      <rect>
-      <x>1110</x>
+      <x>1090</x>
       <y>200</y>
-      <width>151</width>
-      <height>16</height>
+      <width>171</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -175,7 +175,7 @@
      <rect>
       <x>1270</x>
       <y>170</y>
-      <width>61</width>
+      <width>71</width>
       <height>22</height>
      </rect>
     </property>
@@ -186,34 +186,23 @@
    <widget class="QLabel" name="label_7">
     <property name="geometry">
      <rect>
-      <x>1120</x>
-      <y>420</y>
-      <width>211</width>
-      <height>16</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Используемые звездный каталог</string>
-    </property>
-   </widget>
-   <widget class="QLabel" name="label_8">
-    <property name="geometry">
-     <rect>
       <x>1090</x>
-      <y>450</y>
-      <width>281</width>
-      <height>16</height>
+      <y>420</y>
+      <width>301</width>
+      <height>71</height>
      </rect>
     </property>
     <property name="text">
-     <string>Hipparcos (118 218 звезд на эпоху 1991,25)</string>
+     <string>Используемый звездный
+каталог Hipparcos
+(118 218 звезд на эпоху 1991,25)</string>
     </property>
    </widget>
    <widget class="Line" name="line_2">
     <property name="geometry">
      <rect>
       <x>1080</x>
-      <y>130</y>
+      <y>120</y>
       <width>281</width>
       <height>20</height>
      </rect>
@@ -225,9 +214,9 @@
    <widget class="QPushButton" name="buildMapButton">
     <property name="geometry">
      <rect>
-      <x>1190</x>
-      <y>700</y>
-      <width>100</width>
+      <x>1170</x>
+      <y>710</y>
+      <width>121</width>
       <height>32</height>
      </rect>
     </property>
@@ -238,7 +227,7 @@
    <widget class="QDoubleSpinBox" name="beta2SpinBox">
     <property name="geometry">
      <rect>
-      <x>1250</x>
+      <x>1260</x>
       <y>300</y>
       <width>61</width>
       <height>22</height>
@@ -257,10 +246,10 @@
    <widget class="QLabel" name="phi_label">
     <property name="geometry">
      <rect>
-      <x>1130</x>
-      <y>330</y>
-      <width>111</width>
-      <height>16</height>
+      <x>1110</x>
+      <y>326</y>
+      <width>131</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -270,7 +259,7 @@
    <widget class="QDoubleSpinBox" name="pSpinBox">
     <property name="geometry">
      <rect>
-      <x>1250</x>
+      <x>1260</x>
       <y>330</y>
       <width>61</width>
       <height>22</height>
@@ -289,10 +278,10 @@
    <widget class="QLabel" name="psi_label">
     <property name="geometry">
      <rect>
-      <x>1130</x>
+      <x>1100</x>
       <y>300</y>
-      <width>111</width>
-      <height>16</height>
+      <width>141</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -302,10 +291,10 @@
    <widget class="QLabel" name="theta_label">
     <property name="geometry">
      <rect>
-      <x>1130</x>
+      <x>1100</x>
       <y>270</y>
-      <width>111</width>
-      <height>16</height>
+      <width>141</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -315,10 +304,10 @@
    <widget class="QDoubleSpinBox" name="beta1SpinBox">
     <property name="geometry">
      <rect>
-      <x>1250</x>
-      <y>270</y>
+      <x>1260</x>
+      <y>271</y>
       <width>61</width>
-      <height>22</height>
+      <height>21</height>
      </rect>
     </property>
     <property name="decimals">
@@ -334,10 +323,10 @@
    <widget class="QLabel" name="label_9">
     <property name="geometry">
      <rect>
-      <x>1150</x>
+      <x>1140</x>
       <y>240</y>
-      <width>141</width>
-      <height>16</height>
+      <width>191</width>
+      <height>20</height>
      </rect>
     </property>
     <property name="text">
@@ -374,7 +363,7 @@
     <property name="geometry">
      <rect>
       <x>1080</x>
-      <y>400</y>
+      <y>410</y>
       <width>281</width>
       <height>20</height>
      </rect>
@@ -408,33 +397,18 @@
    <widget class="MyGLWidget" name="GLWidget">
     <property name="geometry">
      <rect>
-      <x>1099</x>
-      <y>480</y>
+      <x>1090</x>
+      <y>500</y>
       <width>271</width>
       <height>200</height>
      </rect>
-    </property>
-   </widget>
-   <widget class="QLabel" name="label_5">
-    <property name="geometry">
-     <rect>
-      <x>1100</x>
-      <y>620</y>
-      <width>81</width>
-      <height>61</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Ox - красная
-Oy - зеленая
-Oz - синяя</string>
     </property>
    </widget>
    <widget class="Line" name="line_6">
     <property name="geometry">
      <rect>
       <x>1080</x>
-      <y>40</y>
+      <y>20</y>
       <width>281</width>
       <height>20</height>
      </rect>
@@ -446,9 +420,9 @@ Oz - синяя</string>
    <widget class="QPushButton" name="settingsButton">
     <property name="geometry">
      <rect>
-      <x>1160</x>
-      <y>10</y>
-      <width>131</width>
+      <x>1130</x>
+      <y>0</y>
+      <width>191</width>
       <height>32</height>
      </rect>
     </property>

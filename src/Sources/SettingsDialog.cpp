@@ -9,6 +9,10 @@
 SettingsDialog::SettingsDialog(QWidget* parent)
     : QDialog(parent)
 {
+    QFont f = this->font();
+    f.setPointSize(18);
+    this->setFont(f);
+
     auto *form = new QFormLayout(this);
 
     //

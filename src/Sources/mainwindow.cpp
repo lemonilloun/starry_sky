@@ -20,6 +20,10 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    QFont f = this->font();        // берём текущий системный шрифт
+    f.setPointSize(18);            // ставим, например, 12 pt вместо стандартных ~8–9
+    this->setFont(f);
+
     if (!ui->MapWidget->layout()) {
         QVBoxLayout* layout = new QVBoxLayout(ui->MapWidget);
         layout->setContentsMargins(0, 0, 0, 0);

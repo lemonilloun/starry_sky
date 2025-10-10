@@ -140,8 +140,8 @@ void rotationZ(double alpha, double R[3][3])
 void buildTransitionMatrix(const std::array<double,3>& r0_eq, double T[3][3])
 {
     double X0 = r0_eq[0];
-    double Y0 = r0_eq[1];
-    double Z0 = r0_eq[2];
+   double Y0 = r0_eq[1];
+   double Z0 = r0_eq[2];
 
     double D2 = X0*X0 + Y0*Y0;
     //if (D2 < 1e-14) {
@@ -176,6 +176,205 @@ void buildTransitionMatrix(const std::array<double,3>& r0_eq, double T[3][3])
     T[2][1] =  Y0;
     T[2][2] =  Z0;
 }
+
+constexpr double DEG_TO_RAD = M_PI / 180.0;
+constexpr double ARCSEC_TO_RAD = DEG_TO_RAD / 3600.0;
+constexpr double JULIAN_DAY_J2000 = 2451545.0;
+
+double normalizeDegrees(double deg)
+{
+    double res = std::fmod(deg, 360.0);
+    if (res < 0.0)
+        res += 360.0;
+    return res;
+}
+
+double julianDate(int year, int month, int day,
+                  double hour = 0.0,
+                  double minute = 0.0,
+                  double second = 0.0)
+{
+    if (month <= 2) {
+        year  -= 1;
+        month += 12;
+    }
+    int A = year / 100;
+    int B = 2 - A + A / 4;
+
+    double dayFraction = (hour + minute / 60.0 + second / 3600.0) / 24.0;
+    double jd = std::floor(365.25 * (year + 4716))
+              + std::floor(30.6001 * (month + 1))
+              + day + dayFraction + B - 1524.5;
+    return jd;
+}
+
+void buildPrecessionMatrix(double t, double P[3][3])
+{
+    double t2 = t * t;
+    double t3 = t2 * t;
+    double t4 = t3 * t;
+    double t5 = t4 * t;
+
+    double ksi =  2.5976176
+                + 2306.0809506 * t
+                + 0.3019015    * t2
+                + 0.0179663    * t3
+                - 0.0000327    * t4
+                - 0.0000002    * t5;
+
+    double tet =  2004.1917476 * t
+                - 0.4269353    * t2
+                - 0.0418251    * t3
+                - 0.00006018   * t4
+                - 0.0000001    * t5;
+
+    double z   = -2.5976176
+                + 2306.0803226 * t
+                + 1.0947790    * t2
+                + 0.0182273    * t3
+                + 0.0000470    * t4
+                - 0.0000003    * t5;
+
+    double rksi = (ksi / 3600.0) * DEG_TO_RAD;
+    double rtet = (tet / 3600.0) * DEG_TO_RAD;
+    double rz   = (z   / 3600.0) * DEG_TO_RAD;
+
+    double R3ksi[3][3], R2tet[3][3], R3z[3][3];
+    rotationZ(-rksi, R3ksi);
+    rotationY(rtet,  R2tet);
+    rotationZ(-rz,   R3z);
+
+    double temp[3][3];
+    mul3x3(R2tet, R3z, temp);
+    mul3x3(R3ksi, temp, P);
+}
+
+struct NutationTerm {
+    int D;
+    int M;
+    int Mp;
+    int F;
+    int Omega;
+    double psiCoeff;    // 0.0001 arcsec
+    double psiCoeffT;   // 0.0001 arcsec per century
+    double epsCoeff;    // 0.0001 arcsec
+    double epsCoeffT;   // 0.0001 arcsec per century
+};
+
+constexpr NutationTerm NUTATION_TERMS[] = {
+    { 0,  0,  0,  0,  1, -171996.0, -174.2,  92025.0,   8.9 },
+    { -2, 0,  0,  2,  2, -13187.0,   -1.6,   5736.0,  -3.1 },
+    { 0,  0,  0,  2,  2, -2274.0,    -0.2,    977.0,  -0.5 },
+    { 0,  0,  0,  0,  2,  2062.0,     0.2,   -895.0,   0.5 },
+    { 0,  1,  0,  0,  0,  1426.0,    -3.4,     54.0,  -0.1 },
+    { 0,  0,  1,  0,  0,   712.0,     0.1,     -7.0,   0.0 },
+    { -2, 1,  0,  2,  2,  -517.0,     1.2,    224.0,  -0.6 },
+    { 0,  0,  0,  2,  1,  -386.0,    -0.4,    200.0,   0.0 },
+    { 0,  0,  1,  2,  2,  -301.0,     0.0,    129.0,  -0.1 },
+    { -2, 0,  1,  2,  2,   217.0,    -0.5,    -95.0,   0.3 }
+};
+
+double meanObliquity(double t)
+{
+    double seconds = 84381.406
+        - 46.836769 * t
+        - 0.0001831 * t * t
+        + 0.00200340 * t * t * t
+        - 0.000000576 * t * t * t * t
+        - 0.0000000434 * t * t * t * t * t;
+    return seconds * ARCSEC_TO_RAD;
+}
+
+void computeNutationAngles(double t, double& deltaPsi, double& deltaEps)
+{
+    double D = normalizeDegrees(297.85036
+                                + 445267.111480 * t
+                                - 0.0019142     * t * t
+                                + t * t * t / 189474.0);
+
+    double M = normalizeDegrees(357.52772
+                                + 35999.050340 * t
+                                - 0.0001603    * t * t
+                                - t * t * t / 300000.0);
+
+    double Mp = normalizeDegrees(134.96298
+                                 + 477198.867398 * t
+                                 + 0.0086972     * t * t
+                                 + t * t * t / 56250.0);
+
+    double F = normalizeDegrees(93.27191
+                                + 483202.017538 * t
+                                - 0.0036825     * t * t
+                                + t * t * t / 327270.0);
+
+    double Omega = normalizeDegrees(125.04452
+                                    - 1934.136261 * t
+                                    + 0.0020708   * t * t
+                                    + t * t * t / 450000.0);
+
+    D     *= DEG_TO_RAD;
+    M     *= DEG_TO_RAD;
+    Mp    *= DEG_TO_RAD;
+    F     *= DEG_TO_RAD;
+    Omega *= DEG_TO_RAD;
+
+    deltaPsi = 0.0;
+    deltaEps = 0.0;
+
+    for (const auto& term : NUTATION_TERMS) {
+        double argument = term.D * D
+                        + term.M * M
+                        + term.Mp * Mp
+                        + term.F * F
+                        + term.Omega * Omega;
+
+        double psiCoeff   = (term.psiCoeff + term.psiCoeffT * t);
+        double epsCoeff   = (term.epsCoeff + term.epsCoeffT * t);
+
+        deltaPsi += psiCoeff * std::sin(argument);
+        deltaEps += epsCoeff * std::cos(argument);
+    }
+
+    constexpr double SCALE = 1e-4 * ARCSEC_TO_RAD;
+    deltaPsi *= SCALE;
+    deltaEps *= SCALE;
+}
+
+void buildNutationMatrix(double epsMean, double deltaPsi, double deltaEps, double N[3][3])
+{
+    double epsTrue = epsMean + deltaEps;
+
+    double R1_neg_eps[3][3];
+    double R3_dpsi[3][3];
+    double R1_eps_true[3][3];
+
+    rotationX(-epsMean,  R1_neg_eps);
+    rotationZ(deltaPsi,  R3_dpsi);
+    rotationX(epsTrue,   R1_eps_true);
+
+    double temp[3][3];
+    mul3x3(R3_dpsi, R1_eps_true, temp);
+    mul3x3(R1_neg_eps, temp, N);
+}
+
+void buildPrecessionNutationMatrix(double jd, double PN[3][3])
+{
+    double t = (jd - JULIAN_DAY_J2000) / 36525.0;
+
+    double P[3][3];
+    buildPrecessionMatrix(t, P);
+
+    double deltaPsi = 0.0;
+    double deltaEps = 0.0;
+    computeNutationAngles(t, deltaPsi, deltaEps);
+
+    double epsMean = meanObliquity(t);
+
+    double N[3][3];
+    buildNutationMatrix(epsMean, deltaPsi, deltaEps, N);
+
+    mul3x3(N, P, PN);
+}
 }
 
 // =========================== Основная логика =============================
@@ -195,13 +394,34 @@ std::vector<StarProjection> StarCatalog::projectStars(
     outSun.eta   = 0.0;
     outSun.apply = false;
 
+    // Эпоха средней даты наблюдений миссии Hipparcos ≈ J1991.25 (1991-04-02 06:00 TT)
+    constexpr int OBS_YEAR  = 2125;
+    constexpr int OBS_MONTH = 9;
+    constexpr int OBS_DAY   = 3;
+    constexpr double OBS_HOUR   = 6.0;
+    constexpr double OBS_MINUTE = 0.0;
+    constexpr double OBS_SECOND = 0.0;
+
+    double observationJD = julianDate(
+        OBS_YEAR,
+        OBS_MONTH,
+        OBS_DAY,
+        OBS_HOUR,
+        OBS_MINUTE,
+        OBS_SECOND
+    );
+
+    double PN[3][3];
+    buildPrecessionNutationMatrix(observationJD, PN);
+
     // 1) Compute initial line–of–sight in equatorial coords
     double cosD0 = std::cos(dec0);
-    std::array<double,3> r0_eq = {
+    std::array<double,3> r0_eq_j2000 = {
         std::cos(alpha0)*cosD0,
         std::sin(alpha0)*cosD0,
         std::sin(dec0)
     };
+    auto r0_eq = mul3x3_3x1(PN, r0_eq_j2000);
 
     // 2) Build transform T_noRoll
     double T_noRoll[3][3];
@@ -254,9 +474,10 @@ std::vector<StarProjection> StarCatalog::projectStars(
             std::sin(star.ra)*cdec,
             std::sin(star.dec)
         };
+        auto starEqEpoch = mul3x3_3x1(PN, starEq);
 
         // 7a) Rotate into camera frame (no roll)
-        auto starCam = mul3x3_3x1(T1_noRoll, starEq);
+        auto starCam = mul3x3_3x1(T1_noRoll, starEqEpoch);
 
         // 7b) Final roll p around z-axis
         double RzP[3][3];

@@ -11,6 +11,7 @@ SOURCES += \
     src/Sources/LightPollution.cpp \
     src/Sources/MyGLWidget.cpp \
     src/Sources/SettingsDialog.cpp \
+    src/Sources/SunEphemeris.cpp \
     src/Sources/StarCatalog.cpp \
     src/Sources/StarMapWidget.cpp \
     src/Sources/main.cpp \
@@ -22,6 +23,7 @@ HEADERS += \
     src/Headers/LightPollution.h \
     src/Headers/MyGLWidget.h \
     src/Headers/SettingsDialog.h \
+    src/Headers/SunEphemeris.h \
     src/Headers/StarCatalog.h \
     src/Headers/StarMapWidget.h \
     src/Headers/mainwindow.h

@@ -2,7 +2,9 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <algorithm>
 #include <iostream>  // Для вывода в консоль
+#include "SunEphemeris.h"
 
 StarCatalog::StarCatalog(const std::string& filename) {
     loadFromFile(filename);
@@ -61,6 +63,8 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 
 // =============== Вспомогательные функции для матриц ===============
 namespace {
+constexpr uint64_t SUN_ID = 1010101010ULL;
+
 // Умножение 3×3 на 3×1
 std::array<double,3> mul3x3_3x1(const double M[3][3], const std::array<double,3>& v)
 {
@@ -379,8 +383,6 @@ void buildPrecessionNutationMatrix(double jd, double PN[3][3])
 
 // =========================== Основная логика =============================
 
-static constexpr uint64_t SUN_ID = 1010101010;
-
 std::vector<StarProjection> StarCatalog::projectStars(
     double alpha0, double dec0, double p0,
     double beta1,  double beta2, double p,
@@ -395,12 +397,12 @@ std::vector<StarProjection> StarCatalog::projectStars(
     outSun.apply = false;
 
     // Эпоха средней даты наблюдений миссии Hipparcos ≈ J1991.25 (1991-04-02 06:00 TT)
-    constexpr int OBS_YEAR  = 2125;
-    constexpr int OBS_MONTH = 9;
-    constexpr int OBS_DAY   = 3;
+    constexpr int OBS_YEAR  = 2000;
+    constexpr int OBS_MONTH = 4;
+    constexpr int OBS_DAY   = 10;
     constexpr double OBS_HOUR   = 6.0;
-    constexpr double OBS_MINUTE = 0.0;
-    constexpr double OBS_SECOND = 0.0;
+    constexpr double OBS_MINUTE = 30.0;
+    constexpr double OBS_SECOND = 5.0;
 
     double observationJD = julianDate(
         OBS_YEAR,
@@ -449,29 +451,74 @@ std::vector<StarProjection> StarCatalog::projectStars(
     double T1_noRoll[3][3];
     buildTransitionMatrix(r1_eq, T1_noRoll);
 
-    // 7) Now project each star
+    // 7) Подготавливаем проекцию
     std::vector<StarProjection> projected;
-    projected.reserve(stars.size());
+    projected.reserve(stars.size() + 1);
 
     double limitX = std::tan(fovX);
     double limitY = std::tan(fovY);
 
-
     double canvasW = 1081.0;              // or pull from your QImage width
     double baseRadiusFactor = 1.0;        // same as what you pass to applySunFlare
-    double Rpix = std::max(canvasW, canvasW)*baseRadiusFactor;  // =1081
-    double dXi   = Rpix / (canvasW/2.0);  // = 2.0
-    double dEta  = Rpix / (canvasW/2.0);
+    double Rpix = std::max(canvasW, canvasW) * baseRadiusFactor;  // =1081
+    double dXi   = Rpix / (canvasW / 2.0);  // = 2.0
+    double dEta  = Rpix / (canvasW / 2.0);
+
+    double RzP[3][3];
+    rotationZ(p, RzP);
+
+    // Аппарентное положение Солнца на дату наблюдения
+    astro::SunEquatorial sunEq = astro::sun_apparent_geocentric(observationJD);
+    double cosSunDec = std::cos(sunEq.dec);
+    std::array<double,3> sunEqVec = {
+        std::cos(sunEq.ra) * cosSunDec,
+        std::sin(sunEq.ra) * cosSunDec,
+        std::sin(sunEq.dec)
+    };
+    auto sunCam = mul3x3_3x1(T1_noRoll, sunEqVec);
+    auto sunCamRolled = mul3x3_3x1(RzP, sunCam);
+    double sunZ = sunCamRolled[2];
+    if (sunZ > 0.0 && std::fabs(sunZ) >= 1e-12) {
+        double sunXi  = sunCamRolled[0] / sunZ;
+        double sunEta = sunCamRolled[1] / sunZ;
+        outSun.xi  = sunXi;
+        outSun.eta = sunEta;
+
+        double distLeft   = std::fabs( sunXi + limitX );
+        double distRight  = std::fabs( limitX - sunXi );
+        double distBottom = std::fabs( sunEta + limitY );
+        double distTop    = std::fabs( limitY - sunEta );
+        if (distLeft   <= dXi ||
+            distRight  <= dXi ||
+            distBottom <= dEta ||
+            distTop    <= dEta)
+        {
+            outSun.apply = true;
+        }
+
+        if (std::fabs(sunXi) <= limitX && std::fabs(sunEta) <= limitY) {
+            StarProjection sunProj;
+            sunProj.x         = sunXi;
+            sunProj.y         = sunEta;
+            sunProj.magnitude = -26.74; // видимая звёздная величина Солнца
+            sunProj.starId    = SUN_ID;
+            projected.push_back(sunProj);
+        }
+    }
+
     for (auto &star : stars) {
 
-        if (star.id != SUN_ID && star.magnitude > maxMagnitude)
+        if (star.id == SUN_ID)
+            continue;
+
+        if (star.magnitude > maxMagnitude)
             continue;
 
         // Convert RA/Dec → unit vector in equatorial frame
         double cdec = std::cos(star.dec);
         std::array<double,3> starEq = {
-            std::cos(star.ra)*cdec,
-            std::sin(star.ra)*cdec,
+            std::cos(star.ra) * cdec,
+            std::sin(star.ra) * cdec,
             std::sin(star.dec)
         };
         auto starEqEpoch = mul3x3_3x1(PN, starEq);
@@ -480,54 +527,23 @@ std::vector<StarProjection> StarCatalog::projectStars(
         auto starCam = mul3x3_3x1(T1_noRoll, starEqEpoch);
 
         // 7b) Final roll p around z-axis
-        double RzP[3][3];
-        rotationZ(p, RzP);
         auto starCam2 = mul3x3_3x1(RzP, starCam);
 
         double x_ = starCam2[0];
         double y_ = starCam2[1];
         double z_ = starCam2[2];
 
-        // If not Sun and behind camera, skip
-        if (star.id != SUN_ID && z_ <= 0.0)
+        if (z_ <= 0.0)
             continue;
 
-        // Project onto plane
         if (std::fabs(z_) < 1e-12)
             continue;
         double xi  = x_ / z_;
         double eta = y_ / z_;
 
-        // If this is our Sun, record its xi/eta and mark apply = true
-        if (star.id == SUN_ID) {
-            outSun.xi  = xi;
-            outSun.eta = eta;
-
-            // distance in ξ to the LEFT border (ξ = -limitX)
-            double distLeft   = std::fabs( xi + limitX );
-            // distance in ξ to the RIGHT border (ξ = +limitX)
-            double distRight  = std::fabs( limitX - xi );
-            // distance in η to the BOTTOM border (η = -limitY)
-            double distBottom = std::fabs( eta + limitY );
-            // distance in η to the TOP border (η = +limitY)
-            double distTop    = std::fabs( limitY - eta );
-
-            // if any of those four distances is ≤ flare‐radius, we still get some glow
-            if (distLeft   <= dXi ||
-                distRight  <= dXi ||
-                distBottom <= dEta ||
-                distTop    <= dEta)
-            {
-                outSun.apply = true;
-            }
-        }
-
-        // Field-of-view clipping
         if (std::fabs(xi) > limitX || std::fabs(eta) > limitY)
             continue;
 
-
-        // Finally add to the list
         StarProjection pr;
         pr.x         = xi;
         pr.y         = eta;
@@ -535,15 +551,6 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.starId    = star.id;
         projected.push_back(pr);
     }
-
-    std::cout << "Sun= " << outSun.apply << std::endl;
-    for (auto &pr : projected) {
-        //std::cout << "Star in FOV => ID=" << pr.starId
-        //          << " xi:" << pr.x << " eta:" << pr.y << std::endl;
-        std::cout << pr.starId<< std::endl;
-    }
-    std::cout << "[INFO] projectStars: total=" << stars.size()
-              << ", projected=" << projected.size() << std::endl;
 
     return projected;
 }

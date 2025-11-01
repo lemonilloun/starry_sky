@@ -4,8 +4,8 @@
 #include "LightPollution.h"
 #include <iostream>
 #include <QPainter>
-#include <QToolTip>
-#include <QRect>
+#include <QLabel>
+#include <QVBoxLayout>
 #include <limits>
 #include <algorithm>
 #include <utility>
@@ -66,7 +66,9 @@ StarMapWidget::StarMapWidget(
       blurParams(blurParams),
       m_blurEnabled(blurEnabled),
       flareParams(flareParams),
-      m_flareEnabled(flareEnabled)
+      m_flareEnabled(flareEnabled),
+      m_infoPopup(nullptr),
+      m_infoLabel(nullptr)
 {
     // 1) чёрно-белый холст
     starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
@@ -239,8 +241,12 @@ void StarMapWidget::mousePressEvent(QMouseEvent* event)
 
         if (foundIndex >= 0 && foundIndex < static_cast<int>(m_projections.size())) {
             QString infoText = formatStarInfo(m_projections[foundIndex]);
-            QToolTip::showText(event->globalPosition().toPoint(), infoText, this, QRect(), 10000);
+            showInfoPopup(event->globalPosition().toPoint(), infoText);
+        } else {
+            hideInfoPopup();
         }
+    } else if (event->button() == Qt::LeftButton) {
+        hideInfoPopup();
     }
 
     QWidget::mousePressEvent(event);
@@ -258,4 +264,43 @@ QString StarMapWidget::formatStarInfo(const StarProjection& projection) const
         .arg(raText)
         .arg(decText)
         .arg(magText);
+}
+
+void StarMapWidget::showInfoPopup(const QPoint& globalPos, const QString& text)
+{
+    if (!m_infoPopup) {
+        m_infoPopup = new QWidget(this, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+        m_infoPopup->setAttribute(Qt::WA_ShowWithoutActivating);
+        m_infoPopup->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_infoPopup->setFocusPolicy(Qt::NoFocus);
+        m_infoPopup->setStyleSheet(
+            "background-color: rgba(24,24,24,220);"
+            "color: #f0f0f0;"
+            "border: 1px solid rgba(220,220,220,180);"
+            "border-radius: 6px;"
+        );
+
+        auto *layout = new QVBoxLayout(m_infoPopup);
+        layout->setContentsMargins(10, 8, 10, 8);
+        m_infoLabel = new QLabel(m_infoPopup);
+        m_infoLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        m_infoLabel->setWordWrap(true);
+        layout->addWidget(m_infoLabel);
+    }
+
+    if (!m_infoLabel)
+        return;
+
+    m_infoLabel->setText(text);
+    m_infoPopup->adjustSize();
+    QPoint offset(14, 14);
+    m_infoPopup->move(globalPos + offset);
+    m_infoPopup->show();
+    m_infoPopup->raise();
+}
+
+void StarMapWidget::hideInfoPopup()
+{
+    if (m_infoPopup)
+        m_infoPopup->hide();
 }

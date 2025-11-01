@@ -13,6 +13,8 @@
 #include "StarCatalog.h"
 #include "SettingsDialog.h"
 
+class QLabel;
+
 class StarMapWidget : public QWidget {
     Q_OBJECT
 
@@ -33,6 +35,8 @@ protected:
 
 private:
     QString formatStarInfo(const StarProjection& projection) const;
+    void showInfoPopup(const QPoint& globalPos, const QString& text);
+    void hideInfoPopup();
     void renderStars();
 
     std::vector<StarProjection> m_projections;
@@ -54,6 +58,9 @@ private:
     double m_centerEta = 0.0;
     double m_scale = 1.0;
     bool   m_hasGeometry = false;
+
+    QWidget* m_infoPopup = nullptr;
+    QLabel*  m_infoLabel = nullptr;
 };
 
 #endif // STARMAPWIDGET_H

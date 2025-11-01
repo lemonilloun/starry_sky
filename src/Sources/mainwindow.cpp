@@ -47,9 +47,13 @@ MainWindow::MainWindow(QWidget *parent)
     ui->beta2SpinBox->setValue(0.0);
     ui->pSpinBox->setValue(0.0);
 
+    ui->DaySpinBox->setRange(1, 31);
     ui->maxMagnitudeSpinBox->setValue(4.5);
     ui->fovXSpinBox->setValue(20.0);
     ui->fovYSpinBox->setValue(20.0);
+    ui->DaySpinBox->setValue(2);
+    ui->MonthSpinBox->setValue(4);
+    ui->YearSpinBox->setValue(1991);
 
 
     connect(ui->buildMapButton, &QPushButton::clicked,
@@ -96,6 +100,9 @@ void MainWindow::buildStarMap()
     // Поле зрения
     double fovX_deg   = ui->fovXSpinBox->value(); // полуширина по X
     double fovY_deg   = ui->fovYSpinBox->value(); // полуширина по Y
+    int obsDay        = ui->DaySpinBox->value();
+    int obsMonth      = ui->MonthSpinBox->value();
+    int obsYear       = ui->YearSpinBox->value();
 
     // 2) Перевод в радианы
     double alpha0 = alpha0_deg * M_PI / 180.0;
@@ -114,7 +121,10 @@ void MainWindow::buildStarMap()
         beta1,  beta2, p,
         fovX,   fovY,
         maxMag,
-        sunInfo
+        sunInfo,
+        obsDay,
+        obsMonth,
+        obsYear
         );
 
     // 4) Подготовим данные для StarMapWidget

@@ -40,7 +40,10 @@ public:
         double beta1,  double beta2, double p,
         double fovX,   double fovY,
         double maxMagnitude,
-        Sun&   outSun
+        Sun&   outSun,
+        int    obsDay,
+        int    obsMonth,
+        int    obsYear
         ) const;
 
 private:

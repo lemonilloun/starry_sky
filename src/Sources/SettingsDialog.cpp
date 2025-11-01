@@ -35,7 +35,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     // sigmaX — стандартное отклонение по оси X (чем больше, тем сильнее размытие)
     m_sigmaX = new QDoubleSpinBox;
     m_sigmaX->setRange(0.1, 10.0);
-    m_sigmaX->setValue(2.0);
+    m_sigmaX->setValue(1.0);
     form->addRow("σ_x (направлени смаза по X)", m_sigmaX);
 
     // sigmaY — стандартное отклонение по оси Y
@@ -47,7 +47,7 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     // rho — коэффициент корреляции осей (0 = независимые фильтры, 1 = одинаковые)
     m_rho = new QDoubleSpinBox;
     m_rho->setRange(0.0, 1.0);
-    m_rho->setValue(0.75);
+    m_rho->setValue(0.0);
     form->addRow("ρ (степень смаза)", m_rho);
 
     //

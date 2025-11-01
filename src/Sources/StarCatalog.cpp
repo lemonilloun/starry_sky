@@ -388,7 +388,10 @@ std::vector<StarProjection> StarCatalog::projectStars(
     double beta1,  double beta2, double p,
     double fovX,   double fovY,
     double maxMagnitude,
-    Sun&   outSun        // ← new parameter
+    Sun&   outSun,
+    int    obsDay,
+    int    obsMonth,
+    int    obsYear
     ) const
 {
     // --- Prepare the Sun output ---
@@ -396,18 +399,15 @@ std::vector<StarProjection> StarCatalog::projectStars(
     outSun.eta   = 0.0;
     outSun.apply = false;
 
-    // Эпоха средней даты наблюдений миссии Hipparcos ≈ J1991.25 (1991-04-02 06:00 TT)
-    constexpr int OBS_YEAR  = 2000;
-    constexpr int OBS_MONTH = 4;
-    constexpr int OBS_DAY   = 10;
+    // Дата наблюдения поступает из UI; время суток пока задаём константами.
     constexpr double OBS_HOUR   = 6.0;
     constexpr double OBS_MINUTE = 30.0;
     constexpr double OBS_SECOND = 5.0;
 
     double observationJD = julianDate(
-        OBS_YEAR,
-        OBS_MONTH,
-        OBS_DAY,
+        obsYear,
+        obsMonth,
+        obsDay,
         OBS_HOUR,
         OBS_MINUTE,
         OBS_SECOND

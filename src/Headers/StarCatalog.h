@@ -12,6 +12,11 @@ struct Star {
     double dec = 0.0;       // Склонение (рад)
     double magnitude = 99.0;
     double colorIndex = 0.0;
+    double hip = 0.0;
+    double hd = 0.0;
+    std::string properName;
+    std::string bayerFlamsteed;
+    std::string gliese;
 };
 
 // Структура для результата проекции

@@ -12,7 +12,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    , catalog(std::make_unique<StarCatalog>("/Users/lehacho/starry_sky/src/data/Catalogue_clean.csv"))
+    , catalog(std::make_unique<StarCatalog>("/Users/lehacho/starry_sky/src/data/Catalogue_clean_extd.csv"))
     , m_blurParams   { 13,   2.0, 1.0, 0.75 }
     , m_flareParams  { 0.6,  1.2, 128, 0.2, 0.3, 52.0 }
     , m_blurEnabled(true)

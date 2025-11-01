@@ -50,7 +50,27 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 
         // ColorIndex (необязательно)
         std::getline(ss, temp, ',');
-        star.colorIndex = std::stod(temp);
+        star.colorIndex = temp.empty() ? 0.0 : std::stod(temp);
+
+        // HIP
+        std::getline(ss, temp, ',');
+        star.hip = temp.empty() ? 0.0 : std::stod(temp);
+
+        // HD
+        std::getline(ss, temp, ',');
+        star.hd = temp.empty() ? 0.0 : std::stod(temp);
+
+        // ProperName
+        std::getline(ss, temp, ',');
+        star.properName = temp;
+
+        // BayerFlamsteed
+        std::getline(ss, temp, ',');
+        star.bayerFlamsteed = temp;
+
+        // Gliese
+        std::getline(ss, temp, ',');
+        star.gliese = temp;
 
         stars.push_back(star);
         lineNumber++;

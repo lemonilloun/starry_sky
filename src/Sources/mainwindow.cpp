@@ -8,6 +8,7 @@
 #include <QDebug>
 #include <cmath>
 #include <cstdint>
+#include <utility>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -128,20 +129,6 @@ void MainWindow::buildStarMap()
         );
 
     // 4) Подготовим данные для StarMapWidget
-    std::vector<double>   xCoords, yCoords, mags;
-    std::vector<uint64_t> ids;                  // <-- вот он!
-    xCoords.reserve(starProjections.size());
-    yCoords.reserve(starProjections.size());
-    mags.   reserve(starProjections.size());
-    ids.    reserve(starProjections.size());
-
-    for (auto &proj : starProjections) {
-        xCoords.push_back(proj.x);
-        yCoords.push_back(proj.y);
-        mags.   push_back(proj.magnitude);
-        ids.    push_back(proj.starId);         // <-- заполняем здесь
-    }
-
     // 5) Очищаем старый виджет
     QLayout *mapLayout = ui->MapWidget->layout();
     if (mapLayout) {
@@ -154,10 +141,7 @@ void MainWindow::buildStarMap()
 
     // 6) Создаем новый и передаем ids
     auto *mapWidget = new StarMapWidget(
-        xCoords,
-        yCoords,
-        mags,
-        ids,
+        std::move(starProjections),
         sunInfo,            // ← pass the computed Sun object
         m_blurParams,
         m_blurEnabled,

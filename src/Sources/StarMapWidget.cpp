@@ -4,34 +4,69 @@
 #include "LightPollution.h"
 #include <iostream>
 #include <QPainter>
+#include <QToolTip>
+#include <QRect>
 #include <limits>
 #include <algorithm>
+#include <utility>
 #include <cmath>
 
 static constexpr uint64_t SUN_ID = 1010101010; // ваш уникальный ID
 
-StarMapWidget::StarMapWidget(
-    const std::vector<double>&   x,
-    const std::vector<double>&   y,
-    const std::vector<double>&   m,
-    const std::vector<uint64_t>& ids,
-    const StarCatalog::Sun&      sunInfo,
-    const BlurParams            blurParams,
-    bool                         blurEnabled,
-    const FlareParams           flareParams,
-    bool                         flareEnabled,
+namespace {
+QString formatRightAscension(double raRad)
+{
+    double hours = raRad * 12.0 / M_PI;
+    hours = std::fmod(hours, 24.0);
+    if (hours < 0.0)
+        hours += 24.0;
 
+    int h = static_cast<int>(std::floor(hours));
+    double minutesF = (hours - h) * 60.0;
+    int m = static_cast<int>(std::floor(minutesF));
+    double seconds = (minutesF - m) * 60.0;
+
+    return QString("%1h %2m %3.1fs")
+        .arg(h, 2, 10, QChar('0'))
+        .arg(m, 2, 10, QChar('0'))
+        .arg(seconds, 4, 'f', 1, QChar('0'));
+}
+
+QString formatDeclination(double decRad)
+{
+    double degrees = decRad * 180.0 / M_PI;
+    double absDeg = std::fabs(degrees);
+    int d = static_cast<int>(std::floor(absDeg));
+    double minutesF = (absDeg - d) * 60.0;
+    int m = static_cast<int>(std::floor(minutesF));
+    double seconds = (minutesF - m) * 60.0;
+    QChar sign = degrees >= 0.0 ? QChar('+') : QChar('-');
+
+    return QString("%1%2 deg %3' %4.0\"")
+        .arg(sign)
+        .arg(d, 2, 10, QChar('0'))
+        .arg(m, 2, 10, QChar('0'))
+        .arg(seconds, 2, 'f', 0, QChar('0'));
+}
+} // namespace
+
+StarMapWidget::StarMapWidget(
+    std::vector<StarProjection> projections,
+    const StarCatalog::Sun&      sunInfo,
+    const BlurParams             blurParams,
+    bool                         blurEnabled,
+    const FlareParams            flareParams,
+    bool                         flareEnabled,
     QWidget*                     parent
-    ) : QWidget(parent),
-    xCoords(x),
-    yCoords(y),
-    magnitudes(m),
-    starIds(ids),
-    sun(sunInfo),
-    blurParams(blurParams),
-    m_blurEnabled(blurEnabled),
-    flareParams(flareParams),
-    m_flareEnabled(flareEnabled)
+    )
+    : QWidget(parent),
+      m_projections(std::move(projections)),
+      m_pixelPositions(m_projections.size()),
+      sun(sunInfo),
+      blurParams(blurParams),
+      m_blurEnabled(blurEnabled),
+      flareParams(flareParams),
+      m_flareEnabled(flareEnabled)
 {
     // 1) чёрно-белый холст
     starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
@@ -54,54 +89,36 @@ StarMapWidget::StarMapWidget(
     }
 
     // 4) если Солнце «попало» (sun.apply==true), рисуем flare,
-    if (m_flareEnabled && sun.apply) {
+    if (m_flareEnabled && sun.apply && m_hasGeometry) {
         int W = blurredImage.width();
         int H = blurredImage.height();
 
-        // пересчитаем bbox & scale из renderStars()
-        double minX = +1e9, maxX = -1e9, minY = +1e9, maxY = -1e9;
-        for (double v : xCoords) minX = std::min(minX, v), maxX = std::max(maxX, v);
-        for (double v : yCoords) minY = std::min(minY, v), maxY = std::max(maxY, v);
-        double dx = maxX - minX, dy = maxY - minY;
-        if (dx > 0 && dy > 0) {
-            double cx    = 0.5*(minX + maxX);
-            double cy    = 0.5*(minY + maxY);
-            double scale = std::min(W/dx, H/dy);
+        double sunXpix = W / 2.0 + (sun.xi  - m_centerXi) * m_scale;
+        double sunYpix = H / 2.0 - (sun.eta - m_centerEta) * m_scale;
 
-            // координаты Солнца в пикселях
-            double sunXpix = W/2.0 + (sun.xi  - cx)*scale;
-            double sunYpix = H/2.0 - (sun.eta - cy)*scale;
+        double Rpix_full = std::max(W, H) * 1.5;
 
-            // полный радиус ореола (baseRadiusFactor == 1.0)
-            double Rpix_full = std::max(W, H) * 1.5;
+        double ddx = sunXpix - W/2.0;
+        double ddy = sunYpix - H/2.0;
+        double distCenter = std::sqrt(ddx*ddx + ddy*ddy);
 
-            // расстояние центра flare до центра кадра
-            double ddx = sunXpix - W/2.0;
-            double ddy = sunYpix - H/2.0;
-            double distCenter = std::sqrt(ddx*ddx + ddy*ddy);
+        double overlap = Rpix_full - distCenter;
+        if (overlap > 0) {
+            double frac = overlap / Rpix_full;
+            double effRadiusFactor = frac * flareParams.baseRadiusFactor;
+            double effIntensity    = frac * flareParams.baseIntensity;
 
-            // сколько «облака» ещё перекрывает кадр
-            double overlap = Rpix_full - distCenter;
-            if (overlap > 0) {
-                // доля полного ореола, которая ещё внутри кадра
-                double frac = overlap / Rpix_full;  // 1.0 в центре → 0 по краю
-
-                // уменьшаем и радиус, и яркость пропорционально frac
-                double effRadiusFactor = frac * flareParams.baseRadiusFactor;  // чуть «раздуваем» чуть-чуть
-                double effIntensity    = frac * flareParams.baseIntensity;  // базовая яркость
-
-                blurredImage = LightPollution::applySunFlare(
-                    blurredImage,
-                    sunXpix,
-                    sunYpix,
-                    /*baseIntensity=*/     effIntensity,
-                    /*baseRadiusFactor=*/  effRadiusFactor,
-                    /*numRays=*/           flareParams.numRays,
-                    /*rayIntensity=*/      flareParams.rayIntensity,
-                    /*maxRayLengthFactor=*/flareParams.maxRayLengthFactor,
-                    /*coreRadius=*/        flareParams.coreRadius
-                    );
-            }
+            blurredImage = LightPollution::applySunFlare(
+                blurredImage,
+                sunXpix,
+                sunYpix,
+                /*baseIntensity=*/     effIntensity,
+                /*baseRadiusFactor=*/  effRadiusFactor,
+                /*numRays=*/           flareParams.numRays,
+                /*rayIntensity=*/      flareParams.rayIntensity,
+                /*maxRayLengthFactor=*/flareParams.maxRayLengthFactor,
+                /*coreRadius=*/        flareParams.coreRadius
+                );
         }
     }
 
@@ -121,26 +138,56 @@ void StarMapWidget::renderStars()
     const int W = starMapImage.width();
     const int H = starMapImage.height();
 
-    // 1) bbox всех точек
-    double minX = +1e9, maxX = -1e9, minY = +1e9, maxY = -1e9;
-    for (double v : xCoords) minX = std::min(minX, v), maxX = std::max(maxX, v);
-    for (double v : yCoords) minY = std::min(minY, v), maxY = std::max(maxY, v);
-    double dx = maxX - minX, dy = maxY - minY;
-    if (dx <= 0 || dy <= 0) return;
+    if (m_projections.empty()) {
+        m_pixelPositions.clear();
+        m_hasGeometry = false;
+        return;
+    }
 
-    double cx    = 0.5*(minX + maxX);
-    double cy    = 0.5*(minY + maxY);
-    double scale = std::min(W/dx, H/dy);
+    double minX = std::numeric_limits<double>::max();
+    double maxX = -std::numeric_limits<double>::max();
+    double minY = std::numeric_limits<double>::max();
+    double maxY = -std::numeric_limits<double>::max();
+
+    for (const auto& proj : m_projections) {
+        minX = std::min(minX, proj.x);
+        maxX = std::max(maxX, proj.x);
+        minY = std::min(minY, proj.y);
+        maxY = std::max(maxY, proj.y);
+    }
+
+    double dx = maxX - minX;
+    double dy = maxY - minY;
+    if (dx <= 0.0 || dy <= 0.0) {
+        m_pixelPositions.clear();
+        m_hasGeometry = false;
+        return;
+    }
+
+    m_minXi = minX;
+    m_maxXi = maxX;
+    m_minEta = minY;
+    m_maxEta = maxY;
+    m_centerXi  = 0.5 * (minX + maxX);
+    m_centerEta = 0.5 * (minY + maxY);
+    m_scale     = std::min(W / dx, H / dy);
+    m_hasGeometry = true;
 
     const double starSizeFactor = 2.0;
 
-    // 2) рисуем все точки
-    for (size_t i = 0; i < xCoords.size(); ++i) {
-        double x = xCoords[i], y = yCoords[i], m = magnitudes[i];
-        uint64_t id = (i < starIds.size() ? starIds[i] : 0ULL);
+    m_pixelPositions.resize(m_projections.size());
 
-        double sx = W/2.0 + (x - cx)*scale;
-        double sy = H/2.0 - (y - cy)*scale;
+    // 2) рисуем все точки
+    for (size_t i = 0; i < m_projections.size(); ++i) {
+        const auto& proj = m_projections[i];
+        double x = proj.x;
+        double y = proj.y;
+        double m = proj.magnitude;
+        uint64_t id = static_cast<uint64_t>(proj.starId);
+
+        double sx = W / 2.0 + (x - m_centerXi) * m_scale;
+        double sy = H / 2.0 - (y - m_centerEta) * m_scale;
+        m_pixelPositions[i] = QPointF(sx, sy);
 
         if (id == SUN_ID) {
             // сам диск солнца чуть больше и жёлтый
@@ -167,4 +214,48 @@ void StarMapWidget::paintEvent(QPaintEvent*)
 {
     QPainter p(this);
     p.drawImage(rect(), blurredImage);
+}
+
+void StarMapWidget::mousePressEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && m_hasGeometry) {
+        QPointF clicked = event->position();
+        const double threshold = 6.0;
+        const double threshold2 = threshold * threshold;
+
+        int foundIndex = -1;
+        double bestDist2 = threshold2;
+
+        for (int i = 0; i < static_cast<int>(m_pixelPositions.size()); ++i) {
+            const QPointF& starPos = m_pixelPositions[i];
+            double dx = starPos.x() - clicked.x();
+            double dy = starPos.y() - clicked.y();
+            double dist2 = dx*dx + dy*dy;
+            if (dist2 <= bestDist2) {
+                bestDist2 = dist2;
+                foundIndex = i;
+            }
+        }
+
+        if (foundIndex >= 0 && foundIndex < static_cast<int>(m_projections.size())) {
+            QString infoText = formatStarInfo(m_projections[foundIndex]);
+            QToolTip::showText(event->globalPosition().toPoint(), infoText, this, QRect(), 10000);
+        }
+    }
+
+    QWidget::mousePressEvent(event);
+}
+
+QString StarMapWidget::formatStarInfo(const StarProjection& projection) const
+{
+    QString name = QString::fromStdString(projection.displayName);
+    QString raText = formatRightAscension(projection.raRad);
+    QString decText = formatDeclination(projection.decRad);
+    QString magText = QString::number(projection.magnitude, 'f', 2);
+
+    return QStringLiteral("%1\nRA: %2\nDec: %3\nMag: %4")
+        .arg(name)
+        .arg(raText)
+        .arg(decText)
+        .arg(magText);
 }

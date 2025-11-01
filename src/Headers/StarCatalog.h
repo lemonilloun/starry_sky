@@ -25,6 +25,9 @@ struct StarProjection {
     double y;
     double magnitude;
     double starId;
+    double raRad;     // прямое восхождение (рад) на дату наблюдения
+    double decRad;    // склонение (рад) на дату наблюдения
+    std::string displayName;
 };
 
 class StarCatalog

@@ -3,6 +3,7 @@
 #include <sstream>
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 #include <iostream>  // Для вывода в консоль
 #include "SunEphemeris.h"
 
@@ -84,6 +85,42 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 // =============== Вспомогательные функции для матриц ===============
 namespace {
 constexpr uint64_t SUN_ID = 1010101010ULL;
+
+std::string trimCopy(std::string s)
+{
+    auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), notSpace));
+    s.erase(std::find_if(s.rbegin(), s.rend(), notSpace).base(), s.end());
+    return s;
+}
+
+std::string makeDisplayName(const Star& star)
+{
+    auto trimmedProper = trimCopy(star.properName);
+    if (!trimmedProper.empty())
+        return trimmedProper;
+
+    auto trimmedBayer = trimCopy(star.bayerFlamsteed);
+    if (!trimmedBayer.empty())
+        return trimmedBayer;
+
+    auto trimmedGliese = trimCopy(star.gliese);
+    if (!trimmedGliese.empty())
+        return trimmedGliese;
+
+    if (star.hip > 0.0) {
+        long long hipInt = static_cast<long long>(std::llround(star.hip));
+        return "HIP " + std::to_string(hipInt);
+    }
+
+    if (star.hd > 0.0) {
+        long long hdInt = static_cast<long long>(std::llround(star.hd));
+        return "HD " + std::to_string(hdInt);
+    }
+
+    long long idInt = static_cast<long long>(std::llround(star.id));
+    return "Star " + std::to_string(idInt);
+}
 
 // Умножение 3×3 на 3×1
 std::array<double,3> mul3x3_3x1(const double M[3][3], const std::array<double,3>& v)
@@ -522,6 +559,9 @@ std::vector<StarProjection> StarCatalog::projectStars(
             sunProj.y         = sunEta;
             sunProj.magnitude = -26.74; // видимая звёздная величина Солнца
             sunProj.starId    = SUN_ID;
+            sunProj.raRad     = sunEq.ra;
+            sunProj.decRad    = sunEq.dec;
+            sunProj.displayName = "Sun (Sol)";
             projected.push_back(sunProj);
         }
     }
@@ -542,6 +582,11 @@ std::vector<StarProjection> StarCatalog::projectStars(
             std::sin(star.dec)
         };
         auto starEqEpoch = mul3x3_3x1(PN, starEq);
+
+        double ra = std::atan2(starEqEpoch[1], starEqEpoch[0]);
+        if (ra < 0.0)
+            ra += 2.0 * M_PI;
+        double dec = std::asin(std::clamp(starEqEpoch[2], -1.0, 1.0));
 
         // 7a) Rotate into camera frame (no roll)
         auto starCam = mul3x3_3x1(T1_noRoll, starEqEpoch);
@@ -569,6 +614,9 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.y         = eta;
         pr.magnitude = star.magnitude;
         pr.starId    = star.id;
+        pr.raRad     = ra;
+        pr.decRad    = dec;
+        pr.displayName = makeDisplayName(star);
         projected.push_back(pr);
     }
 

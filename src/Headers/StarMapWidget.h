@@ -5,6 +5,9 @@
 
 #include <QWidget>
 #include <QImage>
+#include <QMouseEvent>
+#include <QPointF>
+#include <QString>
 #include <vector>
 #include <cstdint>
 #include "StarCatalog.h"
@@ -15,34 +18,42 @@ class StarMapWidget : public QWidget {
 
 public:
     StarMapWidget(
-        const std::vector<double>&   x,
-        const std::vector<double>&   y,
-        const std::vector<double>&   m,
-        const std::vector<uint64_t>& ids,
+        std::vector<StarProjection> projections,
         const StarCatalog::Sun&      sunInfo,
-        BlurParams            blurParams,
+        BlurParams                   blurParams,
         bool                         blurEnabled,
-        FlareParams           flareParams,
+        FlareParams                  flareParams,
         bool                         flareEnabled,
         QWidget*                     parent = nullptr
         );
 
 protected:
     void paintEvent(QPaintEvent*) override;
+    void mousePressEvent(QMouseEvent* event) override;
 
 private:
+    QString formatStarInfo(const StarProjection& projection) const;
     void renderStars();
 
-    std::vector<double>   xCoords, yCoords, magnitudes;
-    std::vector<uint64_t> starIds;
-    StarCatalog::Sun      sun;
-    BlurParams            blurParams;
-    bool        m_blurEnabled;
-    FlareParams           flareParams;
-    bool        m_flareEnabled;
+    std::vector<StarProjection> m_projections;
+    std::vector<QPointF>        m_pixelPositions;
+    StarCatalog::Sun            sun;
+    BlurParams                  blurParams;
+    bool                        m_blurEnabled;
+    FlareParams                 flareParams;
+    bool                        m_flareEnabled;
 
     QImage starMapImage;
     QImage blurredImage;
+
+    double m_minXi = 0.0;
+    double m_maxXi = 0.0;
+    double m_minEta = 0.0;
+    double m_maxEta = 0.0;
+    double m_centerXi = 0.0;
+    double m_centerEta = 0.0;
+    double m_scale = 1.0;
+    bool   m_hasGeometry = false;
 };
 
 #endif // STARMAPWIDGET_H

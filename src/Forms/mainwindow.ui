@@ -53,10 +53,10 @@
      <number>6</number>
     </property>
     <property name="minimum">
-     <double>-100.000000000000000</double>
+     <double>-1000.000000000000000</double>
     </property>
     <property name="maximum">
-     <double>100.000000000000000</double>
+     <double>1000.000000000000000</double>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="observerDecSpinBox">
@@ -72,10 +72,10 @@
      <number>6</number>
     </property>
     <property name="minimum">
-     <double>-100.000000000000000</double>
+     <double>-1000.000000000000000</double>
     </property>
     <property name="maximum">
-     <double>100.000000000000000</double>
+     <double>1000.000000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_2">

@@ -3,12 +3,17 @@
 
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
+#include <QVector3D>
+#include <QVector2D>
+#include <QString>
+#include <vector>
 
 class MyGLWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
     Q_OBJECT
 public:
     explicit MyGLWidget(QWidget* parent = nullptr);
+    ~MyGLWidget() override;
 
     // Методы, чтобы задать углы вращения (в градусах)
     void setAngles(double thetaDeg, double psiDeg, double phiDeg);
@@ -24,8 +29,21 @@ private:
     double m_psi   = 0.0;
     double m_phi   = 0.0;
 
-    // Вспомогательный метод для рисования «двух перекрещенных прямоугольников»
-    void drawSensorModel();
+    bool loadObjModel(const QString& path);
+    bool loadTexture(const QString& path);
+    QString resolveModelPath() const;
+    QString resolveTexturePath(const QString& objPath) const;
+    void drawModel();
+    void drawFallbackModel();
+
+    std::vector<QVector3D> m_modelVertices;
+    std::vector<QVector3D> m_modelNormals;
+    std::vector<QVector2D> m_modelTexCoords;
+    QVector3D              m_modelCenter {0.0f, 0.0f, 0.0f};
+    float                  m_modelScale = 1.0f;
+    bool                   m_modelLoaded = false;
+    bool                   m_modelTextured = false;
+    GLuint                 m_textureId = 0;
 };
 
 #endif // MYGLWIDGET_H

@@ -14,6 +14,9 @@ struct Star {
     double colorIndex = 0.0;
     double hip = 0.0;
     double hd = 0.0;
+    double hr = 0.0;
+    std::string sao;
+    std::string tyc;
     std::string properName;
     std::string bayerFlamsteed;
     std::string gliese;
@@ -28,6 +31,7 @@ struct StarProjection {
     double raRad;     // прямое восхождение (рад) на дату наблюдения
     double decRad;    // склонение (рад) на дату наблюдения
     std::string displayName;
+    std::vector<std::string> catalogDesignations;
 };
 
 class StarCatalog

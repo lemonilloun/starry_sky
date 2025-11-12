@@ -61,6 +61,10 @@ void StarCatalog::loadFromFile(const std::string& filename) {
         std::getline(ss, temp, ',');
         star.hd = temp.empty() ? 0.0 : std::stod(temp);
 
+        // HR
+        std::getline(ss, temp, ',');
+        star.hr = temp.empty() ? 0.0 : std::stod(temp);
+
         // ProperName
         std::getline(ss, temp, ',');
         star.properName = temp;
@@ -72,6 +76,12 @@ void StarCatalog::loadFromFile(const std::string& filename) {
         // Gliese
         std::getline(ss, temp, ',');
         star.gliese = temp;
+
+        // SAO (в текущем CSV нет — оставляем пустым)
+        star.sao.clear();
+
+        // TYC (в текущем CSV нет — оставляем пустым)
+        star.tyc.clear();
 
         stars.push_back(star);
         lineNumber++;
@@ -120,6 +130,41 @@ std::string makeDisplayName(const Star& star)
 
     long long idInt = static_cast<long long>(std::llround(star.id));
     return "Star " + std::to_string(idInt);
+}
+
+std::vector<std::string> buildCatalogDesignations(const Star& star, const std::string& primaryName)
+{
+    std::vector<std::string> records;
+    const std::string primaryTrimmed = trimCopy(primaryName);
+
+    auto pushNumber = [&](const char* prefix, double value) {
+        if (value <= 0.0)
+            return;
+        long long id = static_cast<long long>(std::llround(value));
+        std::string label = std::string(prefix) + " " + std::to_string(id);
+        if (!primaryTrimmed.empty() && trimCopy(label) == primaryTrimmed)
+            return;
+        records.emplace_back(std::move(label));
+    };
+    auto pushString = [&](const char* prefix, const std::string& value) {
+        auto trimmed = trimCopy(value);
+        if (trimmed.empty())
+            return;
+        std::string label = std::string(prefix) + " " + trimmed;
+        if (!primaryTrimmed.empty() && trimCopy(label) == primaryTrimmed)
+            return;
+        records.emplace_back(std::move(label));
+    };
+
+    pushNumber("HIP", star.hip);
+    pushNumber("HD",  star.hd);
+    pushNumber("HR",  star.hr);
+    pushString("Bayer",  star.bayerFlamsteed);
+    pushString("Gliese", star.gliese);
+    pushString("SAO",    star.sao);
+    pushString("TYC",    star.tyc);
+    pushNumber("StarID", star.id);
+    return records;
 }
 
 // Умножение 3×3 на 3×1
@@ -617,6 +662,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.raRad     = ra;
         pr.decRad    = dec;
         pr.displayName = makeDisplayName(star);
+        pr.catalogDesignations = buildCatalogDesignations(star, pr.displayName);
         projected.push_back(pr);
     }
 

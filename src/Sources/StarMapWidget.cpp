@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QStringList>
 #include <limits>
 #include <algorithm>
 #include <utility>
@@ -254,16 +255,55 @@ void StarMapWidget::mousePressEvent(QMouseEvent* event)
 
 QString StarMapWidget::formatStarInfo(const StarProjection& projection) const
 {
-    QString name = QString::fromStdString(projection.displayName);
-    QString raText = formatRightAscension(projection.raRad);
-    QString decText = formatDeclination(projection.decRad);
-    QString magText = QString::number(projection.magnitude, 'f', 2);
+    const QString name = QString::fromStdString(projection.displayName);
+    const bool isCatalogName = name.startsWith("HIP ")
+                            || name.startsWith("HD ")
+                            || name.startsWith("HR ")
+                            || name.startsWith("Star ");
 
-    return QStringLiteral("%1\nRA: %2\nDec: %3\nMag: %4")
-        .arg(name)
-        .arg(raText)
-        .arg(decText)
-        .arg(magText);
+    auto fmt = [](const QString& label, const QString& value) {
+        return QString("<span style='font-weight:600;'>%1:</span> %2")
+            .arg(label.toHtmlEscaped())
+            .arg(value.toHtmlEscaped());
+    };
+
+    QStringList infoLines;
+    infoLines << fmt(QString::fromUtf8("α"), formatRightAscension(projection.raRad));
+    infoLines << fmt(QString::fromUtf8("δ"), formatDeclination(projection.decRad));
+    infoLines << fmt("Mag", QString::number(projection.magnitude, 'f', 2));
+
+    for (const auto& entry : projection.catalogDesignations) {
+        if (entry.empty())
+            continue;
+        const auto colonPos = entry.find(' ');
+        QString label, value;
+        if (colonPos != std::string::npos) {
+            label = QString::fromStdString(entry.substr(0, colonPos));
+            value = QString::fromStdString(entry.substr(colonPos + 1));
+        } else {
+            label = QStringLiteral("ID");
+            value = QString::fromStdString(entry);
+        }
+        infoLines << fmt(label, value);
+    }
+
+    QString html;
+    if (!name.isEmpty()) {
+        if (isCatalogName) {
+            html += name.toHtmlEscaped();
+        } else {
+            html += QString("<span style='font-style:italic;'>%1</span>")
+                    .arg(name.toHtmlEscaped());
+        }
+    }
+
+    if (!infoLines.isEmpty()) {
+        if (!html.isEmpty())
+            html += "<hr style='border:0;border-top:1px solid rgba(255,255,255,0.35);margin:0;'>";
+        html += infoLines.join("<br>");
+    }
+
+    return html;
 }
 
 void StarMapWidget::showInfoPopup(const QPoint& globalPos, const QString& text)
@@ -281,10 +321,18 @@ void StarMapWidget::showInfoPopup(const QPoint& globalPos, const QString& text)
         );
 
         auto *layout = new QVBoxLayout(m_infoPopup);
-        layout->setContentsMargins(10, 8, 10, 8);
+        layout->setContentsMargins(12, 10, 12, 10);
         m_infoLabel = new QLabel(m_infoPopup);
         m_infoLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         m_infoLabel->setWordWrap(true);
+        m_infoLabel->setTextFormat(Qt::RichText);
+        m_infoLabel->setStyleSheet(
+            "QLabel {"
+            "  font-family: 'Inter', 'Helvetica', 'Arial', sans-serif;"
+            "  font-size: 14px;"
+            "  color: #f2f5ff;"
+            "}"
+        );
         layout->addWidget(m_infoLabel);
     }
 

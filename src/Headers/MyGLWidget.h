@@ -31,10 +31,13 @@ private:
 
     bool loadObjModel(const QString& path);
     bool loadTexture(const QString& path);
+    bool loadBackgroundTexture(const QString& path);
     QString resolveModelPath() const;
     QString resolveTexturePath(const QString& objPath) const;
+    QString resolveBackgroundPath() const;
     void drawModel();
     void drawFallbackModel();
+    void drawBackground();
 
     std::vector<QVector3D> m_modelVertices;
     std::vector<QVector3D> m_modelNormals;
@@ -44,6 +47,8 @@ private:
     bool                   m_modelLoaded = false;
     bool                   m_modelTextured = false;
     GLuint                 m_textureId = 0;
+    GLuint                 m_backgroundTextureId = 0;
+    bool                   m_backgroundLoaded = false;
 };
 
 #endif // MYGLWIDGET_H

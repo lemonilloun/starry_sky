@@ -25,6 +25,10 @@ MyGLWidget::~MyGLWidget()
         glDeleteTextures(1, &m_textureId);
         m_textureId = 0;
     }
+    if (m_backgroundTextureId != 0) {
+        glDeleteTextures(1, &m_backgroundTextureId);
+        m_backgroundTextureId = 0;
+    }
     doneCurrent();
 }
 
@@ -80,6 +84,16 @@ void MyGLWidget::initializeGL()
         qWarning() << "OBJ model path not found, fallback to primitive geometry";
     }
 
+    const QString bgPath = resolveBackgroundPath();
+    if (!bgPath.isEmpty()) {
+        m_backgroundLoaded = loadBackgroundTexture(bgPath);
+        if (m_backgroundLoaded) {
+            qDebug() << "Loaded background texture from" << bgPath;
+        } else {
+            qWarning() << "Failed to load background texture" << bgPath;
+        }
+    }
+
     qDebug() << "MyGLWidget initialized!";
 }
 
@@ -106,6 +120,8 @@ void MyGLWidget::paintGL()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    drawBackground();
+
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
@@ -131,6 +147,45 @@ void MyGLWidget::paintGL()
     } else {
         drawFallbackModel();
     }
+}
+
+void MyGLWidget::drawBackground()
+{
+    if (!m_backgroundLoaded || m_backgroundTextureId == 0)
+        return;
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, m_backgroundTextureId);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f, -1.0f);
+    glTexCoord2f(1.0f, 1.0f); glVertex2f( 1.0f, -1.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex2f( 1.0f,  1.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex2f(-1.0f,  1.0f);
+    glEnd();
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDisable(GL_TEXTURE_2D);
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+
+    glEnable(GL_DEPTH_TEST);
 }
 
 void MyGLWidget::drawModel()
@@ -374,6 +429,30 @@ QString MyGLWidget::resolveTexturePath(const QString& objPath) const
         if (QFile::exists(candidate))
             return QFileInfo(candidate).canonicalFilePath();
     }
+    return {};
+}
+
+QString MyGLWidget::resolveBackgroundPath() const
+{
+    const QString relativePath = QStringLiteral("src/data/model/theme.png");
+
+    QStringList roots = {
+        QCoreApplication::applicationDirPath(),
+        QDir::currentPath()
+    };
+    for (const QString& root : roots) {
+        QDir dir(root);
+        for (int depth = 0; depth < 6; ++depth) {
+            const QString candidate = dir.filePath(relativePath);
+            if (QFile::exists(candidate))
+                return QFileInfo(candidate).canonicalFilePath();
+            if (!dir.cdUp())
+                break;
+        }
+    }
+    const QString directPath = QDir::cleanPath(QStringLiteral("/Users/lehacho/starry_sky/") + relativePath);
+    if (QFile::exists(directPath))
+        return QFileInfo(directPath).canonicalFilePath();
     return {};
 }
 
@@ -627,6 +706,39 @@ bool MyGLWidget::loadTexture(const QString& path)
                  GL_UNSIGNED_BYTE,
                  image.constBits());
     glGenerateMipmap(GL_TEXTURE_2D);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return true;
+}
+
+bool MyGLWidget::loadBackgroundTexture(const QString& path)
+{
+    QImage image(path);
+    if (image.isNull()) {
+        qWarning() << "Failed to load background image" << path;
+        return false;
+    }
+
+    image = image.convertToFormat(QImage::Format_RGBA8888);
+
+    if (m_backgroundTextureId == 0)
+        glGenTextures(1, &m_backgroundTextureId);
+
+    glBindTexture(GL_TEXTURE_2D, m_backgroundTextureId);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGBA,
+                 image.width(),
+                 image.height(),
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 image.constBits());
 
     glBindTexture(GL_TEXTURE_2D, 0);
     return true;

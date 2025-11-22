@@ -6,6 +6,8 @@
 #include <QPainter>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QCoreApplication>
+#include <QRegularExpression>
 #include <QStringList>
 #include <limits>
 #include <algorithm>
@@ -58,6 +60,7 @@ StarMapWidget::StarMapWidget(
     bool                         blurEnabled,
     const FlareParams            flareParams,
     bool                         flareEnabled,
+    ObservationInfo              observation,
     QWidget*                     parent
     )
     : QWidget(parent),
@@ -69,8 +72,10 @@ StarMapWidget::StarMapWidget(
       flareParams(flareParams),
       m_flareEnabled(flareEnabled),
       m_infoPopup(nullptr),
-      m_infoLabel(nullptr)
+      m_infoLabel(nullptr),
+      m_observation(observation)
 {
+    setFocusPolicy(Qt::StrongFocus);
     // 1) чёрно-белый холст
     starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
     starMapImage.fill(Qt::black);
@@ -253,6 +258,21 @@ void StarMapWidget::mousePressEvent(QMouseEvent* event)
     QWidget::mousePressEvent(event);
 }
 
+void StarMapWidget::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_S || event->key() == Qt::Key_7) {
+        qDebug() << "[StarMapWidget] keyPress detected" << event->text();
+        if (saveSnapshot()) {
+            qDebug() << "[StarMapWidget] snapshot saved";
+            event->accept();
+            return;
+        } else {
+            qDebug() << "[StarMapWidget] snapshot FAILED";
+        }
+    }
+    QWidget::keyPressEvent(event);
+}
+
 QString StarMapWidget::formatStarInfo(const StarProjection& projection) const
 {
     const QString name = QString::fromStdString(projection.displayName);
@@ -351,4 +371,101 @@ void StarMapWidget::hideInfoPopup()
 {
     if (m_infoPopup)
         m_infoPopup->hide();
+}
+
+bool StarMapWidget::saveSnapshot()
+{
+    QString saveDirPath = ensureSaveDirectory();
+    if (saveDirPath.isEmpty())
+        return false;
+
+    QDir dir(saveDirPath);
+    int index = nextSnapshotIndex(dir);
+    QString baseName = QString("sky_%1").arg(index);
+
+    QString imagePath = dir.filePath(baseName + ".png");
+    if (!blurredImage.save(imagePath)) {
+        qWarning() << "[StarMapWidget] failed to save image" << imagePath;
+        return false;
+    }
+
+    QFile txtFile(dir.filePath(baseName + ".txt"));
+    if (!txtFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+
+    auto radToDeg = [](double rad) {
+        return rad * 180.0 / M_PI;
+    };
+
+    QTextStream stream(&txtFile);
+    stream.setRealNumberNotation(QTextStream::FixedNotation);
+    stream.setRealNumberPrecision(8);
+    stream << "STAR_ID\tRA(rad)\tDEC(rad)\n";
+    for (const auto& proj : m_projections) {
+        stream << proj.starId << '\t'
+               << proj.raRad << '\t'
+               << proj.decRad << '\n';
+    }
+
+    stream << "\n";
+    stream.setRealNumberPrecision(4);
+    stream << "Observer RA (deg): " << radToDeg(m_observation.observerRaRad) << '\n';
+    stream << "Observer Dec (deg): " << radToDeg(m_observation.observerDecRad) << '\n';
+    stream << "FOV X (deg): " << radToDeg(m_observation.fovXRad) << '\n';
+    stream << "FOV Y (deg): " << radToDeg(m_observation.fovYRad) << '\n';
+    stream << "Observation date: "
+           << QString("%1-%2-%3")
+                .arg(m_observation.obsYear, 4, 10, QLatin1Char('0'))
+                .arg(m_observation.obsMonth, 2, 10, QLatin1Char('0'))
+                .arg(m_observation.obsDay, 2, 10, QLatin1Char('0'))
+           << '\n';
+
+    qDebug() << "[StarMapWidget] snapshot stored at" << imagePath;
+    return true;
+}
+
+QString StarMapWidget::ensureSaveDirectory() const
+{
+    const QString relative = QStringLiteral("save");
+    QStringList roots = {
+        QCoreApplication::applicationDirPath(),
+        QDir::currentPath()
+    };
+
+    for (const QString& root : roots) {
+        QDir dir(root);
+        for (int depth = 0; depth < 6; ++depth) {
+            const QString candidate = dir.absoluteFilePath(relative);
+            QDir candidateDir(candidate);
+            if (candidateDir.exists())
+                return candidateDir.absolutePath();
+            if (QDir().mkpath(candidate))
+                return candidateDir.absolutePath();
+            if (!dir.cdUp())
+                break;
+        }
+    }
+    const QString fallback =
+        QDir::cleanPath(QStringLiteral("/Users/lehacho/starry_sky/") + "/" + relative);
+    QDir fallbackDir(fallback);
+    if (fallbackDir.exists() || QDir().mkpath(fallback))
+        return fallbackDir.absolutePath();
+    qWarning() << "[StarMapWidget] unable to create save directory";
+    return {};
+}
+
+int StarMapWidget::nextSnapshotIndex(const QDir& dir) const
+{
+    QStringList files = dir.entryList(QStringList() << "sky_*.png", QDir::Files);
+    int maxIndex = 0;
+    for (const QString& file : files) {
+        if (!file.startsWith("sky_") || !file.endsWith(".png"))
+            continue;
+        QString numberPart = file.mid(4, file.length() - 8);
+        bool ok = false;
+        int value = numberPart.toInt(&ok);
+        if (ok && value > maxIndex)
+            maxIndex = value;
+    }
+    return maxIndex + 1;
 }

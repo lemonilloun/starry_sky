@@ -140,6 +140,15 @@ void MainWindow::buildStarMap()
     }
 
     // 6) Создаем новый и передаем ids
+    ObservationInfo obsInfo;
+    obsInfo.observerRaRad = alpha0;
+    obsInfo.observerDecRad = dec0;
+    obsInfo.fovXRad = fovX;
+    obsInfo.fovYRad = fovY;
+    obsInfo.obsDay = obsDay;
+    obsInfo.obsMonth = obsMonth;
+    obsInfo.obsYear = obsYear;
+
     auto *mapWidget = new StarMapWidget(
         std::move(starProjections),
         sunInfo,            // ← pass the computed Sun object
@@ -147,11 +156,13 @@ void MainWindow::buildStarMap()
         m_blurEnabled,
         m_flareParams,
         m_flareEnabled,
+        obsInfo,
         ui->MapWidget
         );
 
     // 7) Добавляем в лэйаут
     mapLayout->addWidget(mapWidget);
+    mapWidget->setFocus();
 }
 
 void MainWindow::onAnglesChanged()

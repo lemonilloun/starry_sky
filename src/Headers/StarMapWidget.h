@@ -8,12 +8,27 @@
 #include <QMouseEvent>
 #include <QPointF>
 #include <QString>
+#include <QKeyEvent>
+#include <QDir>
+#include <QFile>
+#include <QTextStream>
+#include <QDebug>
 #include <vector>
 #include <cstdint>
 #include "StarCatalog.h"
 #include "SettingsDialog.h"
 
 class QLabel;
+
+struct ObservationInfo {
+    double observerRaRad = 0.0;
+    double observerDecRad = 0.0;
+    double fovXRad = 0.0;
+    double fovYRad = 0.0;
+    int obsDay = 0;
+    int obsMonth = 0;
+    int obsYear = 0;
+};
 
 class StarMapWidget : public QWidget {
     Q_OBJECT
@@ -26,18 +41,24 @@ public:
         bool                         blurEnabled,
         FlareParams                  flareParams,
         bool                         flareEnabled,
+        ObservationInfo              observation,
         QWidget*                     parent = nullptr
         );
 
 protected:
     void paintEvent(QPaintEvent*) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     QString formatStarInfo(const StarProjection& projection) const;
     void showInfoPopup(const QPoint& globalPos, const QString& text);
     void hideInfoPopup();
     void renderStars();
+    void drawBackground();
+    bool saveSnapshot();
+    QString ensureSaveDirectory() const;
+    int nextSnapshotIndex(const QDir& dir) const;
 
     std::vector<StarProjection> m_projections;
     std::vector<QPointF>        m_pixelPositions;
@@ -61,6 +82,7 @@ private:
 
     QWidget* m_infoPopup = nullptr;
     QLabel*  m_infoLabel = nullptr;
+    ObservationInfo        m_observation;
 };
 
 #endif // STARMAPWIDGET_H

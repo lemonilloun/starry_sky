@@ -184,6 +184,7 @@ void StarMapWidget::renderStars()
     const double starSizeFactor = 2.0;
 
     m_pixelPositions.resize(m_projections.size());
+    m_pixelRadii.resize(m_projections.size());
 
     // 2) рисуем все точки
     for (size_t i = 0; i < m_projections.size(); ++i) {
@@ -203,6 +204,7 @@ void StarMapWidget::renderStars()
             p.setPen(Qt::NoPen);
             p.setBrush(sunCol);
             p.drawEllipse(QPointF(sx, sy), 48.0, 53.0);
+            m_pixelRadii[i] = 53.0;
         } else {
             // обычная звезда
             double bf = 27.0 / std::pow(2.512, m);
@@ -214,6 +216,7 @@ void StarMapWidget::renderStars()
             p.setPen(Qt::NoPen);
             p.setBrush(col);
             p.drawEllipse(QPointF(sx, sy), r, r);
+            m_pixelRadii[i] = r;
         }
     }
 }
@@ -222,6 +225,21 @@ void StarMapWidget::paintEvent(QPaintEvent*)
 {
     QPainter p(this);
     p.drawImage(rect(), blurredImage);
+
+    if (m_selectedIndex >= 0 &&
+        m_selectedIndex < static_cast<int>(m_pixelPositions.size()) &&
+        m_selectedIndex < static_cast<int>(m_pixelRadii.size()))
+    {
+        const QPointF& pos = m_pixelPositions[m_selectedIndex];
+        double r = m_pixelRadii[m_selectedIndex];
+        double margin = 3.0;
+        QPen pen(QColor(255, 60, 60));
+        pen.setStyle(Qt::DashLine);
+        pen.setWidth(2);
+        p.setPen(pen);
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(pos, r + margin, r + margin);
+    }
 }
 
 void StarMapWidget::mousePressEvent(QMouseEvent* event)
@@ -245,17 +263,21 @@ void StarMapWidget::mousePressEvent(QMouseEvent* event)
             }
         }
 
-        if (foundIndex >= 0 && foundIndex < static_cast<int>(m_projections.size())) {
-            QString infoText = formatStarInfo(m_projections[foundIndex]);
-            showInfoPopup(event->globalPosition().toPoint(), infoText);
-        } else {
-            hideInfoPopup();
-        }
-    } else if (event->button() == Qt::LeftButton) {
+    if (foundIndex >= 0 && foundIndex < static_cast<int>(m_projections.size())) {
+        QString infoText = formatStarInfo(m_projections[foundIndex]);
+        showInfoPopup(event->globalPosition().toPoint(), infoText);
+        m_selectedIndex = foundIndex;
+        update();
+    } else {
         hideInfoPopup();
+        m_selectedIndex = -1;
     }
+} else if (event->button() == Qt::LeftButton) {
+    hideInfoPopup();
+    m_selectedIndex = -1;
+}
 
-    QWidget::mousePressEvent(event);
+QWidget::mousePressEvent(event);
 }
 
 void StarMapWidget::keyPressEvent(QKeyEvent* event)

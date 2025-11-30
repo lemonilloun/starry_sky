@@ -62,6 +62,7 @@ private:
 
     std::vector<StarProjection> m_projections;
     std::vector<QPointF>        m_pixelPositions;
+    std::vector<double>         m_pixelRadii;
     StarCatalog::Sun            sun;
     BlurParams                  blurParams;
     bool                        m_blurEnabled;
@@ -83,6 +84,7 @@ private:
     QWidget* m_infoPopup = nullptr;
     QLabel*  m_infoLabel = nullptr;
     ObservationInfo        m_observation;
+    int                    m_selectedIndex = -1;
 };
 
 #endif // STARMAPWIDGET_H

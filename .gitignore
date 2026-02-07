@@ -6,4 +6,6 @@ main.dsYM/
 src/starry_sky.pro.user
 src/.DS_Store
 starry_sky.pro.user
+src/.qtc_clangd
+Makefile
 

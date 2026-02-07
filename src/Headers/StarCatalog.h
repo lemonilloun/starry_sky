@@ -1,45 +1,65 @@
 #ifndef STARCATALOG_H
 #define STARCATALOG_H
 
-#include <vector>
 #include <string>
-#include <utility>
+#include <vector>
+#include <array>
 
-// Структура для представления информации о звезде
+// Структура для хранения исходной информации о звезде
 struct Star {
-    double id;          // Идентификатор звезды
-    double ra;          // Прямое восхождение (в радианах)
-    double dec;         // Склонение (в радианах)
-    double magnitude;   // Звездная величина
-    double colorIndex;  // Индекс цвета (можно игнорировать, если не используется)
-
-    // Горизонтальные координаты
-    double altitude;    // Высота
-    double azimuth;     // Азимут
+    double id = 0.0;        // ID звезды
+    double ra = 0.0;        // Прямое восхождение (рад)
+    double dec = 0.0;       // Склонение (рад)
+    double magnitude = 99.0;
+    double colorIndex = 0.0;
+    double hip = 0.0;
+    double hd = 0.0;
+    double hr = 0.0;
+    std::string sao;
+    std::string tyc;
+    std::string properName;
+    std::string bayerFlamsteed;
+    std::string gliese;
 };
 
-// Класс для работы с каталогом звезд
-class StarCatalog {
+// Структура для результата проекции
+struct StarProjection {
+    double x;         // координата на плоскости (после всех поворотов)
+    double y;
+    double magnitude;
+    double starId;
+    double raRad;     // прямое восхождение (рад) на дату наблюдения
+    double decRad;    // склонение (рад) на дату наблюдения
+    std::string displayName;
+    std::vector<std::string> catalogDesignations;
+};
+
+class StarCatalog
+{
 public:
-    // Конструктор, принимающий имя файла CSV для загрузки данных
-    StarCatalog(const std::string& filename);
+    explicit StarCatalog(const std::string& filename);
+    void loadFromFile(const std::string& filename);
 
-    // Метод для получения звезд, видимых наблюдателю с заданными координатами
-    std::vector<Star> getVisibleStars(double observerRA, double observerDec, double maxMagnitude);
+    struct Sun {
+        double xi;      // координаты солнца на плоскости (xi)
+        double eta;     // координаты солнца на плоскости (eta)
+        bool   apply;   // нужно ли рисовать flare
+    };
 
-    // Метод для преобразования видимых звезд в стереографическую проекцию с учетом поля зрения (FoV)
-    std::pair<std::vector<double>, std::vector<double>> stereographicProjection(
-        const std::vector<Star>& stars,
-        double fovX,
-        double fovY
+    // Новый метод проекции
+    std::vector<StarProjection> projectStars(
+        double alpha0, double dec0, double p0,
+        double beta1,  double beta2, double p,
+        double fovX,   double fovY,
+        double maxMagnitude,
+        Sun&   outSun,
+        int    obsDay,
+        int    obsMonth,
+        int    obsYear
         ) const;
 
 private:
-    // Вектор для хранения данных о звездах из каталога
     std::vector<Star> stars;
-
-    // Метод для загрузки данных звезд из файла CSV
-    void loadFromFile(const std::string& filename);
 };
 
-#endif // STARCATALOG_H
+#endif

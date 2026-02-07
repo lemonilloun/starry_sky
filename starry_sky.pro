@@ -1,6 +1,5 @@
-QT       += core gui
+QT += core gui widgets openglwidgets
 
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
 
@@ -10,6 +9,9 @@ INCLUDEPATH += src/Headers
 SOURCES += \
     src/Sources/GaussianBlur.cpp \
     src/Sources/LightPollution.cpp \
+    src/Sources/MyGLWidget.cpp \
+    src/Sources/SettingsDialog.cpp \
+    src/Sources/SunEphemeris.cpp \
     src/Sources/StarCatalog.cpp \
     src/Sources/StarMapWidget.cpp \
     src/Sources/main.cpp \
@@ -19,6 +21,9 @@ SOURCES += \
 HEADERS += \
     src/Headers/GaussianBlur.h \
     src/Headers/LightPollution.h \
+    src/Headers/MyGLWidget.h \
+    src/Headers/SettingsDialog.h \
+    src/Headers/SunEphemeris.h \
     src/Headers/StarCatalog.h \
     src/Headers/StarMapWidget.h \
     src/Headers/mainwindow.h

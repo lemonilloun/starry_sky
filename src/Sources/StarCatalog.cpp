@@ -2,7 +2,10 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <algorithm>
+#include <cctype>
 #include <iostream>  // Для вывода в консоль
+#include "SunEphemeris.h"
 
 StarCatalog::StarCatalog(const std::string& filename) {
     loadFromFile(filename);
@@ -10,8 +13,6 @@ StarCatalog::StarCatalog(const std::string& filename) {
 
 void StarCatalog::loadFromFile(const std::string& filename) {
     std::ifstream file(filename);
-
-    // Проверка на успешное открытие файла
     if (!file.is_open()) {
         std::cerr << "Ошибка: не удалось открыть файл " << filename << std::endl;
         return;
@@ -23,7 +24,7 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 
     while (std::getline(file, line)) {
         if (lineNumber == 0) {
-            // Пропускаем первую строку с заголовками
+            // Пропускаем заголовок
             lineNumber++;
             continue;
         }
@@ -34,31 +35,55 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 
         // Чтение StarID
         std::getline(ss, temp, ',');
-        star.id = std::stod(temp); // Преобразуем ID в число
+        star.id = std::stod(temp);
 
-        // Чтение RA
+        // RA (в часах -> перевести в радианы)
         std::getline(ss, temp, ',');
-        star.ra = std::stod(temp) * 15 * M_PI / 180;  // Преобразуем в радианы (RA в часах)
+        star.ra = std::stod(temp) * 15.0 * M_PI / 180.0;
 
-        // Чтение Dec
+        // Dec (в градусах -> радианы)
         std::getline(ss, temp, ',');
-        star.dec = std::stod(temp) * M_PI / 180;      // Преобразуем в радианы (Dec в градусах)
+        star.dec = std::stod(temp) * M_PI / 180.0;
 
-        // Чтение Mag
+        // Mag
         std::getline(ss, temp, ',');
-        star.magnitude = std::stod(temp);             // Преобразуем звездную величину
+        star.magnitude = std::stod(temp);
 
-        // Чтение ColorIndex (можно игнорировать, если не используется)
+        // ColorIndex (необязательно)
         std::getline(ss, temp, ',');
-        star.colorIndex = std::stod(temp);            // Преобразуем индекс цвета
+        star.colorIndex = temp.empty() ? 0.0 : std::stod(temp);
 
-        stars.push_back(star);  // Добавляем звезду в список
+        // HIP
+        std::getline(ss, temp, ',');
+        star.hip = temp.empty() ? 0.0 : std::stod(temp);
 
-        // Печатаем информацию о считанной звезде для отладки
-        //if (lineNumber <= 10) {  // Например, выводим первые 10 звезд
-        //    std::cout << "Star " << lineNumber << ": RA = " << star.ra << ", Dec = " << star.dec << ", Mag = " << star.magnitude << std::endl;
-        //}
+        // HD
+        std::getline(ss, temp, ',');
+        star.hd = temp.empty() ? 0.0 : std::stod(temp);
 
+        // HR
+        std::getline(ss, temp, ',');
+        star.hr = temp.empty() ? 0.0 : std::stod(temp);
+
+        // ProperName
+        std::getline(ss, temp, ',');
+        star.properName = temp;
+
+        // BayerFlamsteed
+        std::getline(ss, temp, ',');
+        star.bayerFlamsteed = temp;
+
+        // Gliese
+        std::getline(ss, temp, ',');
+        star.gliese = temp;
+
+        // SAO (в текущем CSV нет — оставляем пустым)
+        star.sao.clear();
+
+        // TYC (в текущем CSV нет — оставляем пустым)
+        star.tyc.clear();
+
+        stars.push_back(star);
         lineNumber++;
     }
 
@@ -67,109 +92,579 @@ void StarCatalog::loadFromFile(const std::string& filename) {
     }
 }
 
-// Функция для преобразования экваториальных координат в горизонтальные
-std::pair<double, double> transformation(double observerDec, double observerRA, double starRA, double starDec) {
-    double t = starRA - observerRA;
-    double z = acos(sin(starDec) * sin(observerDec) + cos(starDec) * cos(observerDec) * cos(t));
+// =============== Вспомогательные функции для матриц ===============
+namespace {
+constexpr uint64_t SUN_ID = 1010101010ULL;
 
-    // Азимут (с учетом нулевых значений)
-    double a1 = asin(cos(starDec) * sin(t) / sin(z));
-    double a2 = acos((-sin(starDec) * cos(observerDec) + cos(starDec) * sin(observerDec) * cos(t)) / sin(z));
-    double azimuth;
-    if (a1 > 0) {
-        azimuth = a2;
-    } else if (a1 < 0) {
-        azimuth = 2 * M_PI - a2;
-    } else {
-        azimuth = 0;
-    }
-
-    // Высота светила
-    double altitude = M_PI / 2 - z;
-
-    return {altitude, azimuth};
+std::string trimCopy(std::string s)
+{
+    auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), notSpace));
+    s.erase(std::find_if(s.rbegin(), s.rend(), notSpace).base(), s.end());
+    return s;
 }
 
-// Фильтрация звезд, которые выше горизонта
-std::vector<Star> StarCatalog::getVisibleStars(double observerRA, double observerDec, double maxMagnitude) {
-    std::vector<Star> visibleStars;
+std::string makeDisplayName(const Star& star)
+{
+    auto trimmedProper = trimCopy(star.properName);
+    if (!trimmedProper.empty())
+        return trimmedProper;
 
-    int totalStars = 0;   // Общее количество обработанных звезд
-    int starsAboveHorizon = 0; // Звезды, находящиеся выше горизонта
-    int starsByMagnitude = 0;  // Звезды, удовлетворяющие звездной величине
+    auto trimmedBayer = trimCopy(star.bayerFlamsteed);
+    if (!trimmedBayer.empty())
+        return trimmedBayer;
 
-    for (auto& star : stars) {
-        // Фильтрация по звездной величине
-        if (star.magnitude > maxMagnitude) {
-            continue; // Пропускаем звезды, которые слишком тусклые
-        }
+    auto trimmedGliese = trimCopy(star.gliese);
+    if (!trimmedGliese.empty())
+        return trimmedGliese;
 
-        starsByMagnitude++;  // Увеличиваем счетчик звезд, подходящих по величине
-
-        // Преобразуем экваториальные координаты в горизонтальные
-        auto [altitude, azimuth] = transformation(observerDec, observerRA, star.ra, star.dec);
-
-        totalStars++; // Увеличиваем общее количество звезд
-
-        // Сохраняем горизонтальные координаты в структуру Star
-        star.altitude = altitude;
-        star.azimuth = azimuth;
-
-        if (altitude > 0) {
-            visibleStars.push_back(star);
-            starsAboveHorizon++; // Увеличиваем счетчик звезд над горизонтом
-        }
+    if (star.hip > 0.0) {
+        long long hipInt = static_cast<long long>(std::llround(star.hip));
+        return "HIP " + std::to_string(hipInt);
     }
 
-    // Выводим информацию о количестве звезд
-    std::cout << "Всего обработано: " << totalStars << std::endl;
-    std::cout << "Звезд, удовлетворяющих звездной величине: " << starsByMagnitude << std::endl;
-    std::cout << "Звезд над горизонтом: " << starsAboveHorizon << std::endl;
+    if (star.hd > 0.0) {
+        long long hdInt = static_cast<long long>(std::llround(star.hd));
+        return "HD " + std::to_string(hdInt);
+    }
 
-    return visibleStars;
+    long long idInt = static_cast<long long>(std::llround(star.id));
+    return "Star " + std::to_string(idInt);
 }
 
-// Стереографическая проекция с учетом углового поля зрения (FoV)
-std::pair<std::vector<double>, std::vector<double>> StarCatalog::stereographicProjection(
-    const std::vector<Star>& stars,
-    double fovX,
-    double fovY
-    ) const {
-    std::vector<double> x, y;
+std::vector<std::string> buildCatalogDesignations(const Star& star, const std::string& primaryName)
+{
+    std::vector<std::string> records;
+    const std::string primaryTrimmed = trimCopy(primaryName);
 
-    // Углы обзора по X и Y в радианах
-    double angleX = (fovX / 2) * M_PI / 180;
-    double angleY = (fovY / 2) * M_PI / 180;
+    auto pushNumber = [&](const char* prefix, double value) {
+        if (value <= 0.0)
+            return;
+        long long id = static_cast<long long>(std::llround(value));
+        std::string label = std::string(prefix) + " " + std::to_string(id);
+        if (!primaryTrimmed.empty() && trimCopy(label) == primaryTrimmed)
+            return;
+        records.emplace_back(std::move(label));
+    };
+    auto pushString = [&](const char* prefix, const std::string& value) {
+        auto trimmed = trimCopy(value);
+        if (trimmed.empty())
+            return;
+        std::string label = std::string(prefix) + " " + trimmed;
+        if (!primaryTrimmed.empty() && trimCopy(label) == primaryTrimmed)
+            return;
+        records.emplace_back(std::move(label));
+    };
 
-    // Расчет границ кадра lx и ly
-    double lx = std::abs((sin(M_PI / 2 + angleX) * cos(M_PI / 2) - cos(M_PI / 2 + angleX) * sin(M_PI / 2) * cos(0)) /
-                         (sin(M_PI / 2) * sin(M_PI / 2 + angleX) + cos(M_PI / 2 + angleX) * cos(M_PI / 2) * cos(0)));
+    pushNumber("HIP", star.hip);
+    pushNumber("HD",  star.hd);
+    pushNumber("HR",  star.hr);
+    pushString("Bayer",  star.bayerFlamsteed);
+    pushString("Gliese", star.gliese);
+    pushString("SAO",    star.sao);
+    pushString("TYC",    star.tyc);
+    pushNumber("StarID", star.id);
+    return records;
+}
 
-    double ly = std::abs((sin(M_PI / 2 + angleY) * cos(M_PI / 2) - cos(M_PI / 2 + angleY) * sin(M_PI / 2) * cos(0)) /
-                         (sin(M_PI / 2) * sin(M_PI / 2 + angleY) + cos(M_PI / 2 + angleY) * cos(M_PI / 2) * cos(0)));
+// Умножение 3×3 на 3×1
+std::array<double,3> mul3x3_3x1(const double M[3][3], const std::array<double,3>& v)
+{
+    std::array<double,3> out;
+    for (int i = 0; i < 3; i++) {
+        double sum = 0.0;
+        for (int j = 0; j < 3; j++) {
+            sum += M[i][j] * v[j];
+        }
+        out[i] = sum;
+    }
+    return out;
+}
 
-    std::cout << "lx: " << lx << " ly: " << ly << std::endl;
+// Умножение 3×3 на 3×3
+void mul3x3(const double A[3][3], const double B[3][3], double C[3][3])
+{
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            double sum = 0.0;
+            for (int k = 0; k < 3; k++) {
+                sum += A[i][k] * B[k][j];
+            }
+            C[i][j] = sum;
+        }
+    }
+}
 
-    int starsInFov = 0;  // Счетчик звезд, попавших в поле зрения
+// Транспонирование
+void transpose3x3(const double A[3][3], double AT[3][3])
+{
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            AT[j][i] = A[i][j];
+        }
+    }
+}
 
-    for (const auto& star : stars) {
-        // Используем уже сохраненные горизонтальные координаты (altitude и azimuth)
-        double altitude = star.altitude;
-        double azimuth = star.azimuth;
+// Так как матрицы ортонормированы, A^-1 = A^T
+void invertOrthogonal(const double A[3][3], double Ainv[3][3])
+{
+    transpose3x3(A, Ainv);
+}
 
-        // Преобразуем горизонтальные координаты в стереографические
-        double ksi = cos(altitude) * sin(azimuth) / sin(altitude); // x
-        double eta = -cos(altitude) * cos(azimuth) / sin(altitude); // y
+// Вращение вокруг оси X
+void rotationX(double alpha, double R[3][3])
+{
+    double c = std::cos(alpha);
+    double s = std::sin(alpha);
+    R[0][0] = 1;  R[0][1] = 0;  R[0][2] = 0;
+    R[1][0] = 0;  R[1][1] = c;  R[1][2] =-s;
+    R[2][0] = 0;  R[2][1] = s;  R[2][2] = c;
+}
 
-        // Проверяем, находится ли звезда в пределах границ кадра
-        if (ksi >= -lx && ksi <= lx && eta >= -ly && eta <= ly) {
-            x.push_back(ksi);
-            y.push_back(eta);
-            starsInFov++;
+// Вращение вокруг оси Y
+void rotationY(double alpha, double R[3][3])
+{
+    double c = std::cos(alpha);
+    double s = std::sin(alpha);
+    R[0][0] = c;  R[0][1] = 0; R[0][2] = s;
+    R[1][0] = 0;  R[1][1] = 1; R[1][2] = 0;
+    R[2][0] =-s;  R[2][1] = 0; R[2][2] = c;
+}
+
+// Вращение вокруг оси Z
+void rotationZ(double alpha, double R[3][3])
+{
+    double c = std::cos(alpha);
+    double s = std::sin(alpha);
+    R[0][0] = c;  R[0][1] =-s; R[0][2] = 0;
+    R[1][0] = s;  R[1][1] = c;  R[1][2] = 0;
+    R[2][0] = 0;  R[2][1] = 0;  R[2][2] = 1;
+}
+
+// По формуле (3.2) — строим матрицу T, переводящую из eq (X,Y,Z) в систему (xi,eta,zeta),
+// так что заданный r0_eq (ось визирования) перейдёт в (0,0,1).
+void buildTransitionMatrix(const std::array<double,3>& r0_eq, double T[3][3])
+{
+    double X0 = r0_eq[0];
+   double Y0 = r0_eq[1];
+   double Z0 = r0_eq[2];
+
+    double D2 = X0*X0 + Y0*Y0;
+    //if (D2 < 1e-14) {
+        // Случай, когда (X0, Y0) ≈ (0,0), т.е. ось почти параллельна ±Z.
+        // Можно сделать либо единичную, либо flip (если Z0 < 0).
+    //    if (Z0 > 0) {
+    //        T[0][0] = 1; T[0][1] = 0; T[0][2] = 0;
+    //        T[1][0] = 0; T[1][1] = 1; T[1][2] = 0;
+    //        T[2][0] = 0; T[2][1] = 0; T[2][2] = 1;
+    //    } else {
+    //        T[0][0] =-1; T[0][1] = 0;  T[0][2] = 0;
+    //        T[1][0] = 0; T[1][1] =-1; T[1][2] = 0;
+    //        T[2][0] = 0; T[2][1] = 0;  T[2][2] =-1;
+    //    }
+    //    return;
+    //}
+
+    double D = std::sqrt(D2);
+
+    // Первая строка:
+    T[0][0] =  Y0 / D;
+    T[0][1] =  X0 / D;
+    T[0][2] =  0.0;
+
+    // Вторая строка:
+    T[1][0] =  (X0*Z0) / D;
+    T[1][1] =  (-Y0*Z0) / D;
+    T[1][2] =   D;  // sqrt(X0^2 + Y0^2)
+
+    // Третья строка:
+    T[2][0] =  X0;
+    T[2][1] =  Y0;
+    T[2][2] =  Z0;
+}
+
+constexpr double DEG_TO_RAD = M_PI / 180.0;
+constexpr double ARCSEC_TO_RAD = DEG_TO_RAD / 3600.0;
+constexpr double JULIAN_DAY_J2000 = 2451545.0;
+
+double normalizeDegrees(double deg)
+{
+    double res = std::fmod(deg, 360.0);
+    if (res < 0.0)
+        res += 360.0;
+    return res;
+}
+
+double julianDate(int year, int month, int day,
+                  double hour = 0.0,
+                  double minute = 0.0,
+                  double second = 0.0)
+{
+    if (month <= 2) {
+        year  -= 1;
+        month += 12;
+    }
+    int A = year / 100;
+    int B = 2 - A + A / 4;
+
+    double dayFraction = (hour + minute / 60.0 + second / 3600.0) / 24.0;
+    double jd = std::floor(365.25 * (year + 4716))
+              + std::floor(30.6001 * (month + 1))
+              + day + dayFraction + B - 1524.5;
+    return jd;
+}
+
+void buildPrecessionMatrix(double t, double P[3][3])
+{
+    double t2 = t * t;
+    double t3 = t2 * t;
+    double t4 = t3 * t;
+    double t5 = t4 * t;
+
+    double ksi =  2.5976176
+                + 2306.0809506 * t
+                + 0.3019015    * t2
+                + 0.0179663    * t3
+                - 0.0000327    * t4
+                - 0.0000002    * t5;
+
+    double tet =  2004.1917476 * t
+                - 0.4269353    * t2
+                - 0.0418251    * t3
+                - 0.00006018   * t4
+                - 0.0000001    * t5;
+
+    double z   = -2.5976176
+                + 2306.0803226 * t
+                + 1.0947790    * t2
+                + 0.0182273    * t3
+                + 0.0000470    * t4
+                - 0.0000003    * t5;
+
+    double rksi = (ksi / 3600.0) * DEG_TO_RAD;
+    double rtet = (tet / 3600.0) * DEG_TO_RAD;
+    double rz   = (z   / 3600.0) * DEG_TO_RAD;
+
+    double R3ksi[3][3], R2tet[3][3], R3z[3][3];
+    rotationZ(-rksi, R3ksi);
+    rotationY(rtet,  R2tet);
+    rotationZ(-rz,   R3z);
+
+    double temp[3][3];
+    mul3x3(R2tet, R3z, temp);
+    mul3x3(R3ksi, temp, P);
+}
+
+struct NutationTerm {
+    int D;
+    int M;
+    int Mp;
+    int F;
+    int Omega;
+    double psiCoeff;    // 0.0001 arcsec
+    double psiCoeffT;   // 0.0001 arcsec per century
+    double epsCoeff;    // 0.0001 arcsec
+    double epsCoeffT;   // 0.0001 arcsec per century
+};
+
+constexpr NutationTerm NUTATION_TERMS[] = {
+    { 0,  0,  0,  0,  1, -171996.0, -174.2,  92025.0,   8.9 },
+    { -2, 0,  0,  2,  2, -13187.0,   -1.6,   5736.0,  -3.1 },
+    { 0,  0,  0,  2,  2, -2274.0,    -0.2,    977.0,  -0.5 },
+    { 0,  0,  0,  0,  2,  2062.0,     0.2,   -895.0,   0.5 },
+    { 0,  1,  0,  0,  0,  1426.0,    -3.4,     54.0,  -0.1 },
+    { 0,  0,  1,  0,  0,   712.0,     0.1,     -7.0,   0.0 },
+    { -2, 1,  0,  2,  2,  -517.0,     1.2,    224.0,  -0.6 },
+    { 0,  0,  0,  2,  1,  -386.0,    -0.4,    200.0,   0.0 },
+    { 0,  0,  1,  2,  2,  -301.0,     0.0,    129.0,  -0.1 },
+    { -2, 0,  1,  2,  2,   217.0,    -0.5,    -95.0,   0.3 }
+};
+
+double meanObliquity(double t)
+{
+    double seconds = 84381.406
+        - 46.836769 * t
+        - 0.0001831 * t * t
+        + 0.00200340 * t * t * t
+        - 0.000000576 * t * t * t * t
+        - 0.0000000434 * t * t * t * t * t;
+    return seconds * ARCSEC_TO_RAD;
+}
+
+void computeNutationAngles(double t, double& deltaPsi, double& deltaEps)
+{
+    double D = normalizeDegrees(297.85036
+                                + 445267.111480 * t
+                                - 0.0019142     * t * t
+                                + t * t * t / 189474.0);
+
+    double M = normalizeDegrees(357.52772
+                                + 35999.050340 * t
+                                - 0.0001603    * t * t
+                                - t * t * t / 300000.0);
+
+    double Mp = normalizeDegrees(134.96298
+                                 + 477198.867398 * t
+                                 + 0.0086972     * t * t
+                                 + t * t * t / 56250.0);
+
+    double F = normalizeDegrees(93.27191
+                                + 483202.017538 * t
+                                - 0.0036825     * t * t
+                                + t * t * t / 327270.0);
+
+    double Omega = normalizeDegrees(125.04452
+                                    - 1934.136261 * t
+                                    + 0.0020708   * t * t
+                                    + t * t * t / 450000.0);
+
+    D     *= DEG_TO_RAD;
+    M     *= DEG_TO_RAD;
+    Mp    *= DEG_TO_RAD;
+    F     *= DEG_TO_RAD;
+    Omega *= DEG_TO_RAD;
+
+    deltaPsi = 0.0;
+    deltaEps = 0.0;
+
+    for (const auto& term : NUTATION_TERMS) {
+        double argument = term.D * D
+                        + term.M * M
+                        + term.Mp * Mp
+                        + term.F * F
+                        + term.Omega * Omega;
+
+        double psiCoeff   = (term.psiCoeff + term.psiCoeffT * t);
+        double epsCoeff   = (term.epsCoeff + term.epsCoeffT * t);
+
+        deltaPsi += psiCoeff * std::sin(argument);
+        deltaEps += epsCoeff * std::cos(argument);
+    }
+
+    constexpr double SCALE = 1e-4 * ARCSEC_TO_RAD;
+    deltaPsi *= SCALE;
+    deltaEps *= SCALE;
+}
+
+void buildNutationMatrix(double epsMean, double deltaPsi, double deltaEps, double N[3][3])
+{
+    double epsTrue = epsMean + deltaEps;
+
+    double R1_neg_eps[3][3];
+    double R3_dpsi[3][3];
+    double R1_eps_true[3][3];
+
+    rotationX(-epsMean,  R1_neg_eps);
+    rotationZ(deltaPsi,  R3_dpsi);
+    rotationX(epsTrue,   R1_eps_true);
+
+    double temp[3][3];
+    mul3x3(R3_dpsi, R1_eps_true, temp);
+    mul3x3(R1_neg_eps, temp, N);
+}
+
+void buildPrecessionNutationMatrix(double jd, double PN[3][3])
+{
+    double t = (jd - JULIAN_DAY_J2000) / 36525.0;
+
+    double P[3][3];
+    buildPrecessionMatrix(t, P);
+
+    double deltaPsi = 0.0;
+    double deltaEps = 0.0;
+    computeNutationAngles(t, deltaPsi, deltaEps);
+
+    double epsMean = meanObliquity(t);
+
+    double N[3][3];
+    buildNutationMatrix(epsMean, deltaPsi, deltaEps, N);
+
+    mul3x3(N, P, PN);
+}
+}
+
+// =========================== Основная логика =============================
+
+std::vector<StarProjection> StarCatalog::projectStars(
+    double alpha0, double dec0, double p0,
+    double beta1,  double beta2, double p,
+    double fovX,   double fovY,
+    double maxMagnitude,
+    Sun&   outSun,
+    int    obsDay,
+    int    obsMonth,
+    int    obsYear
+    ) const
+{
+    // --- Prepare the Sun output ---
+    outSun.xi    = 0.0;
+    outSun.eta   = 0.0;
+    outSun.apply = false;
+
+    // Дата наблюдения поступает из UI; время суток пока задаём константами.
+    constexpr double OBS_HOUR   = 6.0;
+    constexpr double OBS_MINUTE = 30.0;
+    constexpr double OBS_SECOND = 5.0;
+
+    double observationJD = julianDate(
+        obsYear,
+        obsMonth,
+        obsDay,
+        OBS_HOUR,
+        OBS_MINUTE,
+        OBS_SECOND
+    );
+
+    double PN[3][3];
+    buildPrecessionNutationMatrix(observationJD, PN);
+
+    // 1) Compute initial line–of–sight in equatorial coords
+    double cosD0 = std::cos(dec0);
+    std::array<double,3> r0_eq_j2000 = {
+        std::cos(alpha0)*cosD0,
+        std::sin(alpha0)*cosD0,
+        std::sin(dec0)
+    };
+    auto r0_eq = mul3x3_3x1(PN, r0_eq_j2000);
+
+    // 2) Build transform T_noRoll
+    double T_noRoll[3][3];
+    buildTransitionMatrix(r0_eq, T_noRoll);
+
+    // 3) Apply initial roll p0 about Z
+    double RzP0[3][3], T0[3][3];
+    rotationZ(p0, RzP0);
+    mul3x3(RzP0, T_noRoll, T0);
+
+    // 4) Tilt by beta1 around X, beta2 around Y
+    double Rx[3][3], Ry[3][3], Rxy[3][3];
+    rotationX(beta1, Rx);
+    rotationY(beta2, Ry);
+    mul3x3(Rx, Ry, Rxy);
+
+    // 5) Compute new equatorial LOS after tilts
+    std::array<double,3> oldLoS = {0,0,1};
+    auto r1_local = mul3x3_3x1(Rxy, oldLoS);
+    double T0inv[3][3];
+    invertOrthogonal(T0, T0inv);
+    auto r1_eq = mul3x3_3x1(T0inv, r1_local);
+
+    // 6) Build final “no-roll” matrix for new LOS
+    double T1_noRoll[3][3];
+    buildTransitionMatrix(r1_eq, T1_noRoll);
+
+    // 7) Подготавливаем проекцию
+    std::vector<StarProjection> projected;
+    projected.reserve(stars.size() + 1);
+
+    double limitX = std::tan(fovX);
+    double limitY = std::tan(fovY);
+
+    double canvasW = 1081.0;              // or pull from your QImage width
+    double baseRadiusFactor = 1.0;        // same as what you pass to applySunFlare
+    double Rpix = std::max(canvasW, canvasW) * baseRadiusFactor;  // =1081
+    double dXi   = Rpix / (canvasW / 2.0);  // = 2.0
+    double dEta  = Rpix / (canvasW / 2.0);
+
+    double RzP[3][3];
+    rotationZ(p, RzP);
+
+    // Аппарентное положение Солнца на дату наблюдения
+    astro::SunEquatorial sunEq = astro::sun_apparent_geocentric(observationJD);
+    double cosSunDec = std::cos(sunEq.dec);
+    std::array<double,3> sunEqVec = {
+        std::cos(sunEq.ra) * cosSunDec,
+        std::sin(sunEq.ra) * cosSunDec,
+        std::sin(sunEq.dec)
+    };
+    auto sunCam = mul3x3_3x1(T1_noRoll, sunEqVec);
+    auto sunCamRolled = mul3x3_3x1(RzP, sunCam);
+    double sunZ = sunCamRolled[2];
+    if (sunZ > 0.0 && std::fabs(sunZ) >= 1e-12) {
+        double sunXi  = sunCamRolled[0] / sunZ;
+        double sunEta = sunCamRolled[1] / sunZ;
+        outSun.xi  = sunXi;
+        outSun.eta = sunEta;
+
+        double distLeft   = std::fabs( sunXi + limitX );
+        double distRight  = std::fabs( limitX - sunXi );
+        double distBottom = std::fabs( sunEta + limitY );
+        double distTop    = std::fabs( limitY - sunEta );
+        if (distLeft   <= dXi ||
+            distRight  <= dXi ||
+            distBottom <= dEta ||
+            distTop    <= dEta)
+        {
+            outSun.apply = true;
+        }
+
+        if (std::fabs(sunXi) <= limitX && std::fabs(sunEta) <= limitY) {
+            StarProjection sunProj;
+            sunProj.x         = sunXi;
+            sunProj.y         = sunEta;
+            sunProj.magnitude = -26.74; // видимая звёздная величина Солнца
+            sunProj.starId    = SUN_ID;
+            sunProj.raRad     = sunEq.ra;
+            sunProj.decRad    = sunEq.dec;
+            sunProj.displayName = "Sun (Sol)";
+            projected.push_back(sunProj);
         }
     }
 
-    std::cout << "количество звезд, попавших в поле зрения: " << starsInFov << std::endl;
+    for (auto &star : stars) {
 
-    return {x, y};
+        if (star.id == SUN_ID)
+            continue;
+
+        if (star.magnitude > maxMagnitude)
+            continue;
+
+        // Convert RA/Dec → unit vector in equatorial frame
+        double cdec = std::cos(star.dec);
+        std::array<double,3> starEq = {
+            std::cos(star.ra) * cdec,
+            std::sin(star.ra) * cdec,
+            std::sin(star.dec)
+        };
+        auto starEqEpoch = mul3x3_3x1(PN, starEq);
+
+        double ra = std::atan2(starEqEpoch[1], starEqEpoch[0]);
+        if (ra < 0.0)
+            ra += 2.0 * M_PI;
+        double dec = std::asin(std::clamp(starEqEpoch[2], -1.0, 1.0));
+
+        // 7a) Rotate into camera frame (no roll)
+        auto starCam = mul3x3_3x1(T1_noRoll, starEqEpoch);
+
+        // 7b) Final roll p around z-axis
+        auto starCam2 = mul3x3_3x1(RzP, starCam);
+
+        double x_ = starCam2[0];
+        double y_ = starCam2[1];
+        double z_ = starCam2[2];
+
+        if (z_ <= 0.0)
+            continue;
+
+        if (std::fabs(z_) < 1e-12)
+            continue;
+        double xi  = x_ / z_;
+        double eta = y_ / z_;
+
+        if (std::fabs(xi) > limitX || std::fabs(eta) > limitY)
+            continue;
+
+        StarProjection pr;
+        pr.x         = xi;
+        pr.y         = eta;
+        pr.magnitude = star.magnitude;
+        pr.starId    = star.id;
+        pr.raRad     = ra;
+        pr.decRad    = dec;
+        pr.displayName = makeDisplayName(star);
+        pr.catalogDesignations = buildCatalogDesignations(star, pr.displayName);
+        projected.push_back(pr);
+    }
+
+    return projected;
 }

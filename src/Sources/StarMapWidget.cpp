@@ -1,140 +1,493 @@
+// StarMapWidget.cpp
 #include "StarMapWidget.h"
 #include "GaussianBlur.h"
 #include "LightPollution.h"
+#include <iostream>
 #include <QPainter>
-#include <QImage>
-#include <QFileDialog>
-#include <QMessageBox>
-#include <QWheelEvent>
+#include <QLabel>
 #include <QVBoxLayout>
+#include <QCoreApplication>
+#include <QRegularExpression>
+#include <QStringList>
+#include <limits>
+#include <algorithm>
+#include <utility>
+#include <cmath>
 
-StarMapWidget::StarMapWidget(const std::vector<double>& xCoords,
-                             const std::vector<double>& yCoords,
-                             const std::vector<double>& magnitudes,
-                             const std::vector<double>& colorIndices,
-                             QWidget* parent)
-    : QWidget(parent)
-    , xCoords(xCoords)
-    , yCoords(yCoords)
-    , magnitudes(magnitudes)
-    , colorIndices(colorIndices)
+static constexpr uint64_t SUN_ID = 1010101010; // ваш уникальный ID
+
+namespace {
+QString formatRightAscension(double raRad)
 {
-    // Создаем изображение для рисования звездного неба (черно-белое изображение)
-    starMapImage = QImage(1280, 1024, QImage::Format_Grayscale8);
-    starMapImage.fill(Qt::black);  // Черный фон
+    double hours = raRad * 12.0 / M_PI;
+    hours = std::fmod(hours, 24.0);
+    if (hours < 0.0)
+        hours += 24.0;
 
-    // Рисуем изображение звездного неба
+    int h = static_cast<int>(std::floor(hours));
+    double minutesF = (hours - h) * 60.0;
+    int m = static_cast<int>(std::floor(minutesF));
+    double seconds = (minutesF - m) * 60.0;
+
+    return QString("%1h %2m %3.1fs")
+        .arg(h, 2, 10, QChar('0'))
+        .arg(m, 2, 10, QChar('0'))
+        .arg(seconds, 4, 'f', 1, QChar('0'));
+}
+
+QString formatDeclination(double decRad)
+{
+    double degrees = decRad * 180.0 / M_PI;
+    double absDeg = std::fabs(degrees);
+    int d = static_cast<int>(std::floor(absDeg));
+    double minutesF = (absDeg - d) * 60.0;
+    int m = static_cast<int>(std::floor(minutesF));
+    double seconds = (minutesF - m) * 60.0;
+    QChar sign = degrees >= 0.0 ? QChar('+') : QChar('-');
+
+    return QString("%1%2 deg %3' %4.0\"")
+        .arg(sign)
+        .arg(d, 2, 10, QChar('0'))
+        .arg(m, 2, 10, QChar('0'))
+        .arg(seconds, 2, 'f', 0, QChar('0'));
+}
+} // namespace
+
+StarMapWidget::StarMapWidget(
+    std::vector<StarProjection> projections,
+    const StarCatalog::Sun&      sunInfo,
+    const BlurParams             blurParams,
+    bool                         blurEnabled,
+    const FlareParams            flareParams,
+    bool                         flareEnabled,
+    ObservationInfo              observation,
+    QWidget*                     parent
+    )
+    : QWidget(parent),
+      m_projections(std::move(projections)),
+      m_pixelPositions(m_projections.size()),
+      sun(sunInfo),
+      blurParams(blurParams),
+      m_blurEnabled(blurEnabled),
+      flareParams(flareParams),
+      m_flareEnabled(flareEnabled),
+      m_infoPopup(nullptr),
+      m_infoLabel(nullptr),
+      m_observation(observation)
+{
+    setFocusPolicy(Qt::StrongFocus);
+    // 1) чёрно-белый холст
+    starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
+    starMapImage.fill(Qt::black);
+
+    // 2) рисуем все точки (звёзды + диск Солнца, если он в кадре)
     renderStars();
 
-    // Применяем фильтр Гаусса к изображению звездного неба
-    blurredImage = GaussianBlur::applyGaussianBlur(starMapImage, 13, 2.0, 1.0, 0.60);  // гиперпараметры: размер ядра, sigmaX, sigmaY, rho
-    blurredImage = LightPollution::applyLightPollution(blurredImage, 0.0, 0.8);       // гиперпараметры: intensity, gradientFactor
-
-    // Создаем кнопки
-    saveButton = new QPushButton("Save Image", this);
-    interactiveModeButton = new QPushButton("Interactive Mode", this);
-
-    // Устанавливаем размеры и начальную позицию кнопок
-    saveButton->setFixedSize(120, 40);
-    interactiveModeButton->setFixedSize(140, 40);
-
-    saveButton->move(width() - saveButton->width() - 10, 10); // Справа сверху
-    interactiveModeButton->move(10, 10); // Слева сверху
-
-    // Привязываем сигналы кнопок
-    connect(saveButton, &QPushButton::clicked, this, [this]() {
-        QString filePath = QFileDialog::getSaveFileName(this, "Save Image", "", "PNG Files (*.png);;JPEG Files (*.jpg)");
-        if (!filePath.isEmpty()) {
-            blurredImage.save(filePath);
-            qDebug() << "Image saved to:" << filePath;
-        }
-    });
-
-    connect(interactiveModeButton, &QPushButton::clicked, this, [this]() {
-        qDebug() << "Interactive Mode clicked";
-        // Здесь реализуйте логику включения интерактивного режима
-    });
-}
-
-void StarMapWidget::renderStars() {
-    QPainter painter(&starMapImage);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    const double brightnessScale = 5.0;  // Коэффициент усиления яркости
-    const int minBrightness = 30;        // Минимальная яркость, чтобы звезды не были слишком тусклыми
-    const double maxStarRadius = 3.0;    // Максимальный радиус звезды
-
-    for (size_t i = 0; i < xCoords.size(); ++i) {
-        double screenX = starMapImage.width() / 2 + xCoords[i] * starMapImage.width() / 2;
-        double screenY = starMapImage.height() / 2 - yCoords[i] * starMapImage.height() / 2;
-
-        double brightnessFactor = brightnessScale / std::pow(2.512, magnitudes[i]);
-        int brightness = static_cast<int>(std::clamp(brightnessFactor * 255, 0.0, 255.0));
-
-        brightness = std::max(brightness, minBrightness);
-
-        QColor starColor(brightness, brightness, brightness);
-        painter.setPen(starColor);
-        painter.setBrush(starColor);
-
-        double starRadius = std::clamp(1.5 * std::sqrt(brightnessFactor), 1.0, maxStarRadius);
-        painter.drawEllipse(QPointF(screenX, screenY), starRadius, starRadius);
-    }
-}
-
-void StarMapWidget::paintEvent(QPaintEvent* /* event */) {
-    QPainter widgetPainter(this);
-
-    if (isInteractiveMode) {
-        // Отображаем увеличенное/уменьшенное изображение в режиме интеракции
-        QRect scaledRect = rect();
-        scaledRect.setWidth(rect().width() * scaleFactor);
-        scaledRect.setHeight(rect().height() * scaleFactor);
-        widgetPainter.drawImage(rect(), blurredImage, scaledRect);
+    // 3) размытие Гауссом
+    if (m_blurEnabled) {
+        blurredImage = GaussianBlur::applyGaussianBlur(
+            starMapImage,
+            /*kernelSize=*/blurParams.kernelSize,
+            /*sigmaX=*/blurParams.sigmaX,
+            /*sigmaY=*/blurParams.sigmaY,
+            /*rho=*/blurParams.rho
+            );
     } else {
-        // Отображаем изображение без интеракции
-        widgetPainter.drawImage(rect(), blurredImage);
+        blurredImage = starMapImage;
     }
+
+    // 4) если Солнце «попало» (sun.apply==true), рисуем flare,
+    if (m_flareEnabled && sun.apply && m_hasGeometry) {
+        int W = blurredImage.width();
+        int H = blurredImage.height();
+
+        double sunXpix = W / 2.0 + (sun.xi  - m_centerXi) * m_scale;
+        double sunYpix = H / 2.0 - (sun.eta - m_centerEta) * m_scale;
+
+        double Rpix_full = std::max(W, H) * 1.5;
+
+        double ddx = sunXpix - W/2.0;
+        double ddy = sunYpix - H/2.0;
+        double distCenter = std::sqrt(ddx*ddx + ddy*ddy);
+
+        double overlap = Rpix_full - distCenter;
+        if (overlap > 0) {
+            double frac = overlap / Rpix_full;
+            double effRadiusFactor = frac * flareParams.baseRadiusFactor;
+            double effIntensity    = frac * flareParams.baseIntensity;
+
+            blurredImage = LightPollution::applySunFlare(
+                blurredImage,
+                sunXpix,
+                sunYpix,
+                /*baseIntensity=*/     effIntensity,
+                /*baseRadiusFactor=*/  effRadiusFactor,
+                /*numRays=*/           flareParams.numRays,
+                /*rayIntensity=*/      flareParams.rayIntensity,
+                /*maxRayLengthFactor=*/flareParams.maxRayLengthFactor,
+                /*coreRadius=*/        flareParams.coreRadius
+                );
+        }
+    }
+
+    // 5) лёгкий глобальный «буст» и шум, чтобы не было чисто-чёрного фона
+    blurredImage = LightPollution::applyGlobalBoost(
+        blurredImage,
+        /*boost=*/          0.1,
+        /*noiseAmplitude=*/ 0.01
+        );
 }
 
-void StarMapWidget::wheelEvent(QWheelEvent* event) {
-    if (!isInteractiveMode) {
-        QWidget::wheelEvent(event); // Если не интерактивный режим, игнорируем колесико
+void StarMapWidget::renderStars()
+{
+    QPainter p(&starMapImage);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    const int W = starMapImage.width();
+    const int H = starMapImage.height();
+
+    if (m_projections.empty()) {
+        m_pixelPositions.clear();
+        m_hasGeometry = false;
         return;
     }
 
-    // Изменяем масштаб в зависимости от направления прокрутки
-    double zoomFactor = 1.1;
-    if (event->angleDelta().y() > 0) {
-        scaleFactor *= zoomFactor; // Увеличиваем масштаб
-    } else {
-        scaleFactor /= zoomFactor; // Уменьшаем масштаб
+    double minX = std::numeric_limits<double>::max();
+    double maxX = -std::numeric_limits<double>::max();
+    double minY = std::numeric_limits<double>::max();
+    double maxY = -std::numeric_limits<double>::max();
+
+    for (const auto& proj : m_projections) {
+        minX = std::min(minX, proj.x);
+        maxX = std::max(maxX, proj.x);
+        minY = std::min(minY, proj.y);
+        maxY = std::max(maxY, proj.y);
     }
-    scaleFactor = std::clamp(scaleFactor, 0.5, 3.0); // Ограничиваем масштаб
 
-    update(); // Перерисовываем виджет
-}
+    double dx = maxX - minX;
+    double dy = maxY - minY;
+    if (dx <= 0.0 || dy <= 0.0) {
+        m_pixelPositions.clear();
+        m_hasGeometry = false;
+        return;
+    }
 
-void StarMapWidget::saveImage() {
-    QString filePath = QFileDialog::getSaveFileName(this, "Save Star Map", "", "PNG Images (*.png)");
-    if (!filePath.isEmpty()) {
-        if (!blurredImage.save(filePath)) {
-            QMessageBox::warning(this, "Error", "Failed to save the image.");
+    m_minXi = minX;
+    m_maxXi = maxX;
+    m_minEta = minY;
+    m_maxEta = maxY;
+    m_centerXi  = 0.5 * (minX + maxX);
+    m_centerEta = 0.5 * (minY + maxY);
+    m_scale     = std::min(W / dx, H / dy);
+    m_hasGeometry = true;
+
+    const double starSizeFactor = 2.0;
+
+    m_pixelPositions.resize(m_projections.size());
+    m_pixelRadii.resize(m_projections.size());
+
+    // 2) рисуем все точки
+    for (size_t i = 0; i < m_projections.size(); ++i) {
+        const auto& proj = m_projections[i];
+        double x = proj.x;
+        double y = proj.y;
+        double m = proj.magnitude;
+        uint64_t id = static_cast<uint64_t>(proj.starId);
+
+        double sx = W / 2.0 + (x - m_centerXi) * m_scale;
+        double sy = H / 2.0 - (y - m_centerEta) * m_scale;
+        m_pixelPositions[i] = QPointF(sx, sy);
+
+        if (id == SUN_ID) {
+            // сам диск солнца чуть больше и жёлтый
+            QColor sunCol(255, 230, 150);
+            p.setPen(Qt::NoPen);
+            p.setBrush(sunCol);
+            p.drawEllipse(QPointF(sx, sy), 48.0, 53.0);
+            m_pixelRadii[i] = 53.0;
         } else {
-            QMessageBox::information(this, "Success", "Image saved successfully.");
+            // обычная звезда
+            double bf = 27.0 / std::pow(2.512, m);
+            int    br = std::clamp(int(bf*255.0), 40, 255);
+            double baseR = std::clamp(1.5*std::sqrt(bf), 1.0, 4.0);
+            double r     = baseR * starSizeFactor;
+
+            QColor col(br, br, br);
+            p.setPen(Qt::NoPen);
+            p.setBrush(col);
+            p.drawEllipse(QPointF(sx, sy), r, r);
+            m_pixelRadii[i] = r;
         }
     }
 }
 
-void StarMapWidget::toggleInteractiveMode() {
-    isInteractiveMode = !isInteractiveMode;
-    interactiveModeButton->setText(isInteractiveMode ? "Disable Interactive Mode" : "Interactive Mode");
-    update();
+void StarMapWidget::paintEvent(QPaintEvent*)
+{
+    QPainter p(this);
+    p.drawImage(rect(), blurredImage);
+
+    if (m_selectedIndex >= 0 &&
+        m_selectedIndex < static_cast<int>(m_pixelPositions.size()) &&
+        m_selectedIndex < static_cast<int>(m_pixelRadii.size()))
+    {
+        const QPointF& pos = m_pixelPositions[m_selectedIndex];
+        double r = m_pixelRadii[m_selectedIndex];
+        double margin = 3.0;
+        QPen pen(QColor(255, 60, 60));
+        pen.setStyle(Qt::DashLine);
+        pen.setWidth(2);
+        p.setPen(pen);
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(pos, r + margin, r + margin);
+    }
 }
 
-void StarMapWidget::resizeEvent(QResizeEvent* event) {
-    // Обновляем позиции кнопок при изменении размера окна
-    saveButton->move(width() - saveButton->width() - 10, 10);
-    interactiveModeButton->move(10, 10);
-    QWidget::resizeEvent(event);
+void StarMapWidget::mousePressEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && m_hasGeometry) {
+        QPointF clicked = event->position();
+        const double threshold = 6.0;
+        const double threshold2 = threshold * threshold;
+
+        int foundIndex = -1;
+        double bestDist2 = threshold2;
+
+        for (int i = 0; i < static_cast<int>(m_pixelPositions.size()); ++i) {
+            const QPointF& starPos = m_pixelPositions[i];
+            double dx = starPos.x() - clicked.x();
+            double dy = starPos.y() - clicked.y();
+            double dist2 = dx*dx + dy*dy;
+            if (dist2 <= bestDist2) {
+                bestDist2 = dist2;
+                foundIndex = i;
+            }
+        }
+
+    if (foundIndex >= 0 && foundIndex < static_cast<int>(m_projections.size())) {
+        QString infoText = formatStarInfo(m_projections[foundIndex]);
+        showInfoPopup(event->globalPosition().toPoint(), infoText);
+        m_selectedIndex = foundIndex;
+        update();
+    } else {
+        hideInfoPopup();
+        m_selectedIndex = -1;
+    }
+} else if (event->button() == Qt::LeftButton) {
+    hideInfoPopup();
+    m_selectedIndex = -1;
+}
+
+QWidget::mousePressEvent(event);
+}
+
+void StarMapWidget::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_S || event->key() == Qt::Key_7) {
+        qDebug() << "[StarMapWidget] keyPress detected" << event->text();
+        if (saveSnapshot()) {
+            qDebug() << "[StarMapWidget] snapshot saved";
+            event->accept();
+            return;
+        } else {
+            qDebug() << "[StarMapWidget] snapshot FAILED";
+        }
+    }
+    QWidget::keyPressEvent(event);
+}
+
+QString StarMapWidget::formatStarInfo(const StarProjection& projection) const
+{
+    const QString name = QString::fromStdString(projection.displayName);
+    const bool isCatalogName = name.startsWith("HIP ")
+                            || name.startsWith("HD ")
+                            || name.startsWith("HR ")
+                            || name.startsWith("Star ");
+
+    auto fmt = [](const QString& label, const QString& value) {
+        return QString("<span style='font-weight:600;'>%1:</span> %2")
+            .arg(label.toHtmlEscaped())
+            .arg(value.toHtmlEscaped());
+    };
+
+    QStringList infoLines;
+    infoLines << fmt(QString::fromUtf8("α"), formatRightAscension(projection.raRad));
+    infoLines << fmt(QString::fromUtf8("δ"), formatDeclination(projection.decRad));
+    infoLines << fmt("Mag", QString::number(projection.magnitude, 'f', 2));
+
+    for (const auto& entry : projection.catalogDesignations) {
+        if (entry.empty())
+            continue;
+        const auto colonPos = entry.find(' ');
+        QString label, value;
+        if (colonPos != std::string::npos) {
+            label = QString::fromStdString(entry.substr(0, colonPos));
+            value = QString::fromStdString(entry.substr(colonPos + 1));
+        } else {
+            label = QStringLiteral("ID");
+            value = QString::fromStdString(entry);
+        }
+        infoLines << fmt(label, value);
+    }
+
+    QString html;
+    if (!name.isEmpty()) {
+        if (isCatalogName) {
+            html += name.toHtmlEscaped();
+        } else {
+            html += QString("<span style='font-style:italic;'>%1</span>")
+                    .arg(name.toHtmlEscaped());
+        }
+    }
+
+    if (!infoLines.isEmpty()) {
+        if (!html.isEmpty())
+            html += "<hr style='border:0;border-top:1px solid rgba(255,255,255,0.35);margin:0;'>";
+        html += infoLines.join("<br>");
+    }
+
+    return html;
+}
+
+void StarMapWidget::showInfoPopup(const QPoint& globalPos, const QString& text)
+{
+    if (!m_infoPopup) {
+        m_infoPopup = new QWidget(this, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+        m_infoPopup->setAttribute(Qt::WA_ShowWithoutActivating);
+        m_infoPopup->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_infoPopup->setFocusPolicy(Qt::NoFocus);
+        m_infoPopup->setStyleSheet(
+            "background-color: rgba(24,24,24,220);"
+            "color: #f0f0f0;"
+            "border: 1px solid rgba(220,220,220,180);"
+            "border-radius: 6px;"
+        );
+
+        auto *layout = new QVBoxLayout(m_infoPopup);
+        layout->setContentsMargins(12, 10, 12, 10);
+        m_infoLabel = new QLabel(m_infoPopup);
+        m_infoLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        m_infoLabel->setWordWrap(true);
+        m_infoLabel->setTextFormat(Qt::RichText);
+        m_infoLabel->setStyleSheet(
+            "QLabel {"
+            "  font-family: 'Inter', 'Helvetica', 'Arial', sans-serif;"
+            "  font-size: 14px;"
+            "  color: #f2f5ff;"
+            "}"
+        );
+        layout->addWidget(m_infoLabel);
+    }
+
+    if (!m_infoLabel)
+        return;
+
+    m_infoLabel->setText(text);
+    m_infoPopup->adjustSize();
+    QPoint offset(14, 14);
+    m_infoPopup->move(globalPos + offset);
+    m_infoPopup->show();
+    m_infoPopup->raise();
+}
+
+void StarMapWidget::hideInfoPopup()
+{
+    if (m_infoPopup)
+        m_infoPopup->hide();
+}
+
+bool StarMapWidget::saveSnapshot()
+{
+    QString saveDirPath = ensureSaveDirectory();
+    if (saveDirPath.isEmpty())
+        return false;
+
+    QDir dir(saveDirPath);
+    int index = nextSnapshotIndex(dir);
+    QString baseName = QString("sky_%1").arg(index);
+
+    QString imagePath = dir.filePath(baseName + ".png");
+    if (!blurredImage.save(imagePath)) {
+        qWarning() << "[StarMapWidget] failed to save image" << imagePath;
+        return false;
+    }
+
+    QFile txtFile(dir.filePath(baseName + ".txt"));
+    if (!txtFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+
+    auto radToDeg = [](double rad) {
+        return rad * 180.0 / M_PI;
+    };
+
+    QTextStream stream(&txtFile);
+    stream.setRealNumberNotation(QTextStream::FixedNotation);
+    stream.setRealNumberPrecision(8);
+    stream << "STAR_ID\tRA(rad)\tDEC(rad)\n";
+    for (const auto& proj : m_projections) {
+        stream << proj.starId << '\t'
+               << proj.raRad << '\t'
+               << proj.decRad << '\n';
+    }
+
+    stream << "\n";
+    stream.setRealNumberPrecision(4);
+    stream << "Observer RA (deg): " << radToDeg(m_observation.observerRaRad) << '\n';
+    stream << "Observer Dec (deg): " << radToDeg(m_observation.observerDecRad) << '\n';
+    stream << "FOV X (deg): " << radToDeg(m_observation.fovXRad) << '\n';
+    stream << "FOV Y (deg): " << radToDeg(m_observation.fovYRad) << '\n';
+    stream << "Observation date: "
+           << QString("%1-%2-%3")
+                .arg(m_observation.obsYear, 4, 10, QLatin1Char('0'))
+                .arg(m_observation.obsMonth, 2, 10, QLatin1Char('0'))
+                .arg(m_observation.obsDay, 2, 10, QLatin1Char('0'))
+           << '\n';
+
+    qDebug() << "[StarMapWidget] snapshot stored at" << imagePath;
+    return true;
+}
+
+QString StarMapWidget::ensureSaveDirectory() const
+{
+    const QString relative = QStringLiteral("save");
+    QStringList roots = {
+        QCoreApplication::applicationDirPath(),
+        QDir::currentPath()
+    };
+
+    for (const QString& root : roots) {
+        QDir dir(root);
+        for (int depth = 0; depth < 6; ++depth) {
+            const QString candidate = dir.absoluteFilePath(relative);
+            QDir candidateDir(candidate);
+            if (candidateDir.exists())
+                return candidateDir.absolutePath();
+            if (QDir().mkpath(candidate))
+                return candidateDir.absolutePath();
+            if (!dir.cdUp())
+                break;
+        }
+    }
+    const QString fallback =
+        QDir::cleanPath(QStringLiteral("/Users/lehacho/starry_sky/") + "/" + relative);
+    QDir fallbackDir(fallback);
+    if (fallbackDir.exists() || QDir().mkpath(fallback))
+        return fallbackDir.absolutePath();
+    qWarning() << "[StarMapWidget] unable to create save directory";
+    return {};
+}
+
+int StarMapWidget::nextSnapshotIndex(const QDir& dir) const
+{
+    QStringList files = dir.entryList(QStringList() << "sky_*.png", QDir::Files);
+    int maxIndex = 0;
+    for (const QString& file : files) {
+        if (!file.startsWith("sky_") || !file.endsWith(".png"))
+            continue;
+        QString numberPart = file.mid(4, file.length() - 8);
+        bool ok = false;
+        int value = numberPart.toInt(&ok);
+        if (ok && value > maxIndex)
+            maxIndex = value;
+    }
+    return maxIndex + 1;
 }

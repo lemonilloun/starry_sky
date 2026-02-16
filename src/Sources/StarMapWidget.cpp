@@ -1,5 +1,6 @@
 // StarMapWidget.cpp
 #include "StarMapWidget.h"
+#include "CelestialBodyTypes.h"
 #include "GaussianBlur.h"
 #include "LightPollution.h"
 #include <iostream>
@@ -14,7 +15,10 @@
 #include <utility>
 #include <cmath>
 
-static constexpr uint64_t SUN_ID = 1010101010; // ваш уникальный ID
+static constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
+static constexpr uint64_t MOON_ID = astro::bodyIdValue(astro::BodyId::Moon);
+static constexpr uint64_t VENUS_ID = astro::bodyIdValue(astro::BodyId::Venus);
+static constexpr uint64_t MARS_ID = astro::bodyIdValue(astro::BodyId::Mars);
 
 namespace {
 QString formatRightAscension(double raRad)
@@ -205,6 +209,26 @@ void StarMapWidget::renderStars()
             p.setBrush(sunCol);
             p.drawEllipse(QPointF(sx, sy), 48.0, 53.0);
             m_pixelRadii[i] = 53.0;
+        } else if (id == MOON_ID) {
+            const double r = 8.0;
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(210, 220, 230));
+            p.drawEllipse(QPointF(sx, sy), r, r);
+            m_pixelRadii[i] = r;
+        } else if (id == VENUS_ID) {
+            const double bf = 27.0 / std::pow(2.512, m);
+            const double r = std::max(5.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(255, 245, 170));
+            p.drawEllipse(QPointF(sx, sy), r, r);
+            m_pixelRadii[i] = r;
+        } else if (id == MARS_ID) {
+            const double bf = 27.0 / std::pow(2.512, m);
+            const double r = std::max(4.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(255, 150, 120));
+            p.drawEllipse(QPointF(sx, sy), r, r);
+            m_pixelRadii[i] = r;
         } else {
             // обычная звезда
             double bf = 27.0 / std::pow(2.512, m);

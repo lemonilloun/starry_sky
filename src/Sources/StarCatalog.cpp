@@ -4,7 +4,11 @@
 #include <cmath>
 #include <algorithm>
 #include <cctype>
+#include <iomanip>
 #include <iostream>  // Для вывода в консоль
+#include "CelestialBodyTypes.h"
+#include "MoonEphemeris.h"
+#include "PlanetEphemeris.h"
 #include "SunEphemeris.h"
 
 StarCatalog::StarCatalog(const std::string& filename) {
@@ -94,7 +98,7 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 
 // =============== Вспомогательные функции для матриц ===============
 namespace {
-constexpr uint64_t SUN_ID = 1010101010ULL;
+constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
 
 std::string trimCopy(std::string s)
 {
@@ -164,6 +168,27 @@ std::vector<std::string> buildCatalogDesignations(const Star& star, const std::s
     pushString("SAO",    star.sao);
     pushString("TYC",    star.tyc);
     pushNumber("StarID", star.id);
+    return records;
+}
+
+std::string formatFixed(double value, int precision)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(precision) << value;
+    return oss.str();
+}
+
+std::vector<std::string> buildBodyDesignations(const astro::BodyEquatorial& body)
+{
+    std::vector<std::string> records;
+    records.emplace_back("Type " + astro::bodyTypeLabel(body.bodyId));
+    records.emplace_back("DistanceAU " + formatFixed(body.distanceAu, 6));
+
+    if (body.angularDiameterRad > 0.0) {
+        double arcsec = body.angularDiameterRad * 180.0 / M_PI * 3600.0;
+        records.emplace_back("AngDiamArcsec " + formatFixed(arcsec, 2));
+    }
+
     return records;
 }
 
@@ -269,11 +294,11 @@ void buildTransitionMatrix(const std::array<double,3>& r0_eq, double T[3][3])
 
     // Первая строка:
     T[0][0] =  Y0 / D;
-    T[0][1] =  X0 / D;
+    T[0][1] = -X0 / D;
     T[0][2] =  0.0;
 
     // Вторая строка:
-    T[1][0] =  (X0*Z0) / D;
+    T[1][0] = -(X0*Z0) / D;
     T[1][1] =  (-Y0*Z0) / D;
     T[1][2] =   D;  // sqrt(X0^2 + Y0^2)
 
@@ -555,7 +580,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
 
     // 7) Подготавливаем проекцию
     std::vector<StarProjection> projected;
-    projected.reserve(stars.size() + 1);
+    projected.reserve(stars.size() + 4);
 
     double limitX = std::tan(fovX);
     double limitY = std::tan(fovY);
@@ -568,6 +593,40 @@ std::vector<StarProjection> StarCatalog::projectStars(
 
     double RzP[3][3];
     rotationZ(p, RzP);
+
+    auto appendBodyProjection = [&](const astro::BodyEquatorial& body) {
+        if (body.magnitude > maxMagnitude)
+            return;
+
+        const double cosDec = std::cos(body.decRad);
+        std::array<double, 3> eqVec = {
+            std::cos(body.raRad) * cosDec,
+            std::sin(body.raRad) * cosDec,
+            std::sin(body.decRad)
+        };
+
+        auto cam = mul3x3_3x1(T1_noRoll, eqVec);
+        auto camRolled = mul3x3_3x1(RzP, cam);
+        const double z = camRolled[2];
+        if (z <= 0.0 || std::fabs(z) < 1e-12)
+            return;
+
+        const double xi = camRolled[0] / z;
+        const double eta = camRolled[1] / z;
+        if (std::fabs(xi) > limitX || std::fabs(eta) > limitY)
+            return;
+
+        StarProjection pr;
+        pr.x = xi;
+        pr.y = eta;
+        pr.magnitude = body.magnitude;
+        pr.starId = static_cast<double>(astro::bodyIdValue(body.bodyId));
+        pr.raRad = body.raRad;
+        pr.decRad = body.decRad;
+        pr.displayName = body.name;
+        pr.catalogDesignations = buildBodyDesignations(body);
+        projected.push_back(pr);
+    };
 
     // Аппарентное положение Солнца на дату наблюдения
     astro::SunEquatorial sunEq = astro::sun_apparent_geocentric(observationJD);
@@ -607,9 +666,25 @@ std::vector<StarProjection> StarCatalog::projectStars(
             sunProj.raRad     = sunEq.ra;
             sunProj.decRad    = sunEq.dec;
             sunProj.displayName = "Sun (Sol)";
+            sunProj.catalogDesignations = buildBodyDesignations({
+                sunEq.ra,
+                sunEq.dec,
+                sunEq.distance_au,
+                -26.74,
+                0.0,
+                astro::BodyId::Sun,
+                "Sun (Sol)"
+            });
             projected.push_back(sunProj);
         }
     }
+
+    // Новые тела (все сразу на дату наблюдения, без дополнительного PN в projectStars()).
+    astro::SsdKeplerPlanetProvider planetProvider(/*enableLightTime=*/true, /*iters=*/2);
+    astro::MoonLiteProvider moonProvider;
+    appendBodyProjection(planetProvider.computeBody(astro::BodyId::Venus, observationJD));
+    appendBodyProjection(planetProvider.computeBody(astro::BodyId::Mars, observationJD));
+    appendBodyProjection(moonProvider.computeMoon(observationJD));
 
     for (auto &star : stars) {
 

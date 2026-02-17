@@ -210,10 +210,29 @@ void StarMapWidget::renderStars()
             p.drawEllipse(QPointF(sx, sy), 48.0, 53.0);
             m_pixelRadii[i] = 53.0;
         } else if (id == MOON_ID) {
-            const double r = 8.0;
+            const double r = 13.0;
+            const double glowR = r * 2.3;
+
+            // Soft moon glow so the Moon stands out as a special body.
+            QRadialGradient glowGrad(QPointF(sx, sy), glowR);
+            glowGrad.setColorAt(0.0, QColor(190, 205, 245, 75));
+            glowGrad.setColorAt(0.45, QColor(155, 170, 210, 30));
+            glowGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(210, 220, 230));
+            p.setBrush(glowGrad);
+            p.drawEllipse(QPointF(sx, sy), glowR, glowR);
+
+            // Moon disk with a subtle phase-like gradient.
+            QRadialGradient moonGrad(QPointF(sx - r * 0.25, sy - r * 0.25), r * 1.35);
+            moonGrad.setColorAt(0.0, QColor(252, 252, 245));
+            moonGrad.setColorAt(0.62, QColor(220, 224, 230));
+            moonGrad.setColorAt(1.0, QColor(130, 136, 148));
+            p.setBrush(moonGrad);
             p.drawEllipse(QPointF(sx, sy), r, r);
+
+            // Slight shadow overlay to avoid a flat white circle.
+            p.setBrush(QColor(25, 30, 45, 45));
+            p.drawEllipse(QPointF(sx + r * 0.22, sy), r * 0.82, r * 0.95);
             m_pixelRadii[i] = r;
         } else if (id == VENUS_ID) {
             const double bf = 27.0 / std::pow(2.512, m);

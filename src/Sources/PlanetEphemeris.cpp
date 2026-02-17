@@ -11,7 +11,8 @@ namespace {
 constexpr double DEG_TO_RAD = M_PI / 180.0;
 constexpr double ARCSEC_TO_RAD = DEG_TO_RAD / 3600.0;
 constexpr double JULIAN_DAY_J2000 = 2451545.0;
-constexpr double EPSILON_J2000 = 23.43929111 * DEG_TO_RAD;
+// SSD "Approximate Positions of the Planets" uses epsilon = 23.43928 deg at J2000.
+constexpr double EPSILON_J2000 = 23.43928 * DEG_TO_RAD;
 constexpr double C_AU_PER_DAY = 173.1446326846693;
 constexpr double KM_PER_AU = 149597870.7;
 
@@ -470,8 +471,7 @@ BodyEquatorial SsdKeplerPlanetProvider::computeBody(BodyId bodyId, double jd_tt)
     }
 
     const Vec3 rhoEqJ2000 = rotateEclToEqJ2000(rhoEcl);
-    const Vec3 rhoEqDate = applyPrecessionNutation(rhoEqJ2000, jd_tt);
-    const auto [ra, dec] = raDecFromVector(rhoEqDate);
+    const auto [ra, dec] = raDecFromVector(rhoEqJ2000);
 
     const double helioDistanceAu = norm(planetHelio);
     const double geoDistanceAu = norm(rhoEcl);

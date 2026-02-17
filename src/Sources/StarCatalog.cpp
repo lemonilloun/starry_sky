@@ -598,14 +598,27 @@ std::vector<StarProjection> StarCatalog::projectStars(
         if (body.magnitude > maxMagnitude)
             return;
 
-        const double cosDec = std::cos(body.decRad);
-        std::array<double, 3> eqVec = {
-            std::cos(body.raRad) * cosDec,
-            std::sin(body.raRad) * cosDec,
+        // Bodies are provided in J2000 and transformed to observation date with the same PN as stars.
+        const double cosDecJ2000 = std::cos(body.decRad);
+        std::array<double, 3> eqVecJ2000 = {
+            std::cos(body.raRad) * cosDecJ2000,
+            std::sin(body.raRad) * cosDecJ2000,
             std::sin(body.decRad)
         };
+        auto eqVec = mul3x3_3x1(PN, eqVecJ2000);
 
-        auto cam = mul3x3_3x1(T1_noRoll, eqVec);
+        double raDate = std::atan2(eqVec[1], eqVec[0]);
+        if (raDate < 0.0)
+            raDate += 2.0 * M_PI;
+        double decDate = std::asin(std::clamp(eqVec[2], -1.0, 1.0));
+
+        std::array<double, 3> eqDateUnit = {
+            std::cos(raDate) * std::cos(decDate),
+            std::sin(raDate) * std::cos(decDate),
+            std::sin(decDate)
+        };
+
+        auto cam = mul3x3_3x1(T1_noRoll, eqDateUnit);
         auto camRolled = mul3x3_3x1(RzP, cam);
         const double z = camRolled[2];
         if (z <= 0.0 || std::fabs(z) < 1e-12)
@@ -621,8 +634,8 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.y = eta;
         pr.magnitude = body.magnitude;
         pr.starId = static_cast<double>(astro::bodyIdValue(body.bodyId));
-        pr.raRad = body.raRad;
-        pr.decRad = body.decRad;
+        pr.raRad = raDate;
+        pr.decRad = decDate;
         pr.displayName = body.name;
         pr.catalogDesignations = buildBodyDesignations(body);
         projected.push_back(pr);
@@ -679,7 +692,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
         }
     }
 
-    // Новые тела (все сразу на дату наблюдения, без дополнительного PN в projectStars()).
+    // Новые тела: провайдеры выдают J2000, дальше применяется тот же PN, что и для звёзд.
     astro::SsdKeplerPlanetProvider planetProvider(/*enableLightTime=*/true, /*iters=*/2);
     astro::MoonLiteProvider moonProvider;
     appendBodyProjection(planetProvider.computeBody(astro::BodyId::Venus, observationJD));

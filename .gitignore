@@ -1,11 +1,29 @@
-.vscode/
-_pycache_/
-build/
-main.dsYM/
+# macOS
 .DS_Store
-src/starry_sky.pro.user
-src/.DS_Store
-starry_sky.pro.user
-src/.qtc_clangd
-Makefile
+.gitignore.save
 
+# IDE / tooling
+.vscode/
+.qtc_clangd/
+*.pro.user
+.qmake.stash
+
+# Build outputs (Qt/qmake + local builds)
+build/
+Makefile
+*.o
+moc_*.cpp
+moc_*.o
+moc_predefs.h
+ui_*.h
+starry_sky.app/
+starry_sky.app.dSYM/
+*.app/
+*.dSYM/
+
+# Runtime exports
+save/
+
+# Python artifacts
+__pycache__/
+_pycache_/

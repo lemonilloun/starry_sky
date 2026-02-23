@@ -30,6 +30,9 @@ struct StarProjection {
     double starId;
     double raRad;     // прямое восхождение (рад) на дату наблюдения
     double decRad;    // склонение (рад) на дату наблюдения
+    double angularDiameterRad = 0.0;
+    double illumination = -1.0; // 0..1 для Луны, иначе -1
+    bool isSpecialBody = false;
     std::string displayName;
     std::vector<std::string> catalogDesignations;
 };

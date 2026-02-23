@@ -18,6 +18,7 @@ struct BodyEquatorial {
     double distanceAu = 0.0;
     double magnitude = 99.0;
     double angularDiameterRad = 0.0;
+    double illumination = -1.0; // 0..1 for phase-dependent bodies, -1 when not used
     BodyId bodyId = BodyId::Sun;
     std::string name;
 };

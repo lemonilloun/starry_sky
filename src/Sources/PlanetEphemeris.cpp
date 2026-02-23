@@ -476,12 +476,14 @@ BodyEquatorial SsdKeplerPlanetProvider::computeBody(BodyId bodyId, double jd_tt)
     const double helioDistanceAu = norm(planetHelio);
     const double geoDistanceAu = norm(rhoEcl);
     const double phaseDeg = phaseAngleDeg(planetHelio, earthHelioObs);
+    const double phaseRad = phaseDeg * DEG_TO_RAD;
 
     BodyEquatorial out;
     out.raRad = ra;
     out.decRad = dec;
     out.distanceAu = geoDistanceAu;
     out.magnitude = magnitudeForPlanet(bodyId, helioDistanceAu, geoDistanceAu, phaseDeg);
+    out.illumination = std::clamp(0.5 * (1.0 + std::cos(phaseRad)), 0.0, 1.0);
     out.bodyId = bodyId;
     out.name = bodyName(bodyId);
 

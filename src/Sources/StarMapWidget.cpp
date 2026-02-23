@@ -5,6 +5,7 @@
 #include "LightPollution.h"
 #include <iostream>
 #include <QPainter>
+#include <QPainterPath>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QCoreApplication>
@@ -186,6 +187,26 @@ void StarMapWidget::renderStars()
     m_hasGeometry = true;
 
     const double starSizeFactor = 2.0;
+    const double sunVisualRadiusPx = 53.0;
+    const double sunVisualDiamPx = 2.0 * sunVisualRadiusPx;
+    const double defaultSunAngularDiamRad = 0.533 * M_PI / 180.0;
+
+    double sunAngularDiamRad = defaultSunAngularDiamRad;
+    QPointF sunPix;
+    bool hasSunPix = false;
+
+    for (const auto& proj : m_projections) {
+        const uint64_t id = static_cast<uint64_t>(proj.starId);
+        if (id != SUN_ID)
+            continue;
+        if (proj.angularDiameterRad > 0.0)
+            sunAngularDiamRad = proj.angularDiameterRad;
+        const double sx = W / 2.0 + (proj.x - m_centerXi) * m_scale;
+        const double sy = H / 2.0 - (proj.y - m_centerEta) * m_scale;
+        sunPix = QPointF(sx, sy);
+        hasSunPix = true;
+        break;
+    }
 
     m_pixelPositions.resize(m_projections.size());
     m_pixelRadii.resize(m_projections.size());
@@ -207,11 +228,22 @@ void StarMapWidget::renderStars()
             QColor sunCol(255, 230, 150);
             p.setPen(Qt::NoPen);
             p.setBrush(sunCol);
-            p.drawEllipse(QPointF(sx, sy), 48.0, 53.0);
-            m_pixelRadii[i] = 53.0;
+            p.drawEllipse(QPointF(sx, sy), 48.0, sunVisualRadiusPx);
+            m_pixelRadii[i] = sunVisualRadiusPx;
         } else if (id == MOON_ID) {
-            const double r = 13.0;
-            const double glowR = r * 2.3;
+            const double moonAngularDiamRad = (proj.angularDiameterRad > 0.0)
+                ? proj.angularDiameterRad
+                : (0.52 * M_PI / 180.0);
+
+            const double ratio = moonAngularDiamRad / std::max(1e-12, sunAngularDiamRad);
+            const double styleScale = 0.96;
+            const double moonDiamStyled = sunVisualDiamPx * ratio * styleScale;
+            const double moonDiamPhys = 2.0 * m_scale * std::tan(0.5 * moonAngularDiamRad);
+            double moonDiamPx = 0.80 * moonDiamStyled + 0.20 * moonDiamPhys;
+            moonDiamPx = std::clamp(moonDiamPx, 0.82 * sunVisualDiamPx, 1.02 * sunVisualDiamPx);
+            const double r = 0.5 * moonDiamPx;
+            const double glowR = r * 1.9;
+            const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
 
             // Soft moon glow so the Moon stands out as a special body.
             QRadialGradient glowGrad(QPointF(sx, sy), glowR);
@@ -230,9 +262,34 @@ void StarMapWidget::renderStars()
             p.setBrush(moonGrad);
             p.drawEllipse(QPointF(sx, sy), r, r);
 
-            // Slight shadow overlay to avoid a flat white circle.
-            p.setBrush(QColor(25, 30, 45, 45));
-            p.drawEllipse(QPointF(sx + r * 0.22, sy), r * 0.82, r * 0.95);
+            // Phase mask: the dark limb is oriented opposite to the Sun direction.
+            double dirX = -1.0;
+            double dirY = 0.0;
+            if (hasSunPix) {
+                const double vx = sunPix.x() - sx;
+                const double vy = sunPix.y() - sy;
+                const double vn = std::hypot(vx, vy);
+                if (vn > 1e-9) {
+                    dirX = vx / vn;
+                    dirY = vy / vn;
+                }
+            }
+            const double terminator = 1.0 - 2.0 * illumination;
+            const double shadowShift = terminator * r;
+
+            p.save();
+            QPainterPath moonDiskClip;
+            moonDiskClip.addEllipse(QPointF(sx, sy), r, r);
+            p.setClipPath(moonDiskClip);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(12, 15, 22, 165));
+            p.drawEllipse(
+                QPointF(sx + dirX * shadowShift, sy + dirY * shadowShift),
+                r,
+                r
+            );
+            p.restore();
+
             m_pixelRadii[i] = r;
         } else if (id == VENUS_ID) {
             const double bf = 27.0 / std::pow(2.512, m);

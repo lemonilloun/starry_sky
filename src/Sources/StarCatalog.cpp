@@ -6,7 +6,9 @@
 #include <cctype>
 #include <iomanip>
 #include <iostream>  // Для вывода в консоль
+#include <filesystem>
 #include "CelestialBodyTypes.h"
+#include "Elp82bMoonProvider.h"
 #include "MoonEphemeris.h"
 #include "PlanetEphemeris.h"
 #include "SunEphemeris.h"
@@ -188,6 +190,9 @@ std::vector<std::string> buildBodyDesignations(const astro::BodyEquatorial& body
         double arcsec = body.angularDiameterRad * 180.0 / M_PI * 3600.0;
         records.emplace_back("AngDiamArcsec " + formatFixed(arcsec, 2));
     }
+    if (body.illumination >= 0.0) {
+        records.emplace_back("Illumination " + formatFixed(body.illumination * 100.0, 1) + "%");
+    }
 
     return records;
 }
@@ -337,6 +342,34 @@ double julianDate(int year, int month, int day,
               + std::floor(30.6001 * (month + 1))
               + day + dayFraction + B - 1524.5;
     return jd;
+}
+
+std::string resolveElpDataDirectory()
+{
+    namespace fs = std::filesystem;
+    const fs::path sourceBased = fs::path(__FILE__).parent_path().parent_path() / "data" / "elp82b";
+    std::vector<fs::path> candidates;
+    candidates.push_back(sourceBased);
+
+    std::error_code ec;
+    fs::path cursor = fs::current_path(ec);
+    if (!ec) {
+        for (int depth = 0; depth < 12; ++depth) {
+            candidates.push_back(cursor / "src" / "data" / "elp82b");
+            fs::path parent = cursor.parent_path();
+            if (parent == cursor || parent.empty())
+                break;
+            cursor = parent;
+        }
+    }
+
+    for (const auto& candidate : candidates) {
+        std::error_code ec;
+        if (fs::exists(candidate / "ELP1", ec))
+            return fs::weakly_canonical(candidate, ec).string();
+    }
+
+    return "src/data/elp82b";
 }
 
 void buildPrecessionMatrix(double t, double P[3][3])
@@ -636,6 +669,9 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.starId = static_cast<double>(astro::bodyIdValue(body.bodyId));
         pr.raRad = raDate;
         pr.decRad = decDate;
+        pr.angularDiameterRad = body.angularDiameterRad;
+        pr.illumination = body.illumination;
+        pr.isSpecialBody = true;
         pr.displayName = body.name;
         pr.catalogDesignations = buildBodyDesignations(body);
         projected.push_back(pr);
@@ -678,13 +714,17 @@ std::vector<StarProjection> StarCatalog::projectStars(
             sunProj.starId    = SUN_ID;
             sunProj.raRad     = sunEq.ra;
             sunProj.decRad    = sunEq.dec;
+            sunProj.angularDiameterRad = 2.0 * std::atan(695700.0 / (sunEq.distance_au * 149597870.7));
+            sunProj.illumination = 1.0;
+            sunProj.isSpecialBody = true;
             sunProj.displayName = "Sun (Sol)";
             sunProj.catalogDesignations = buildBodyDesignations({
                 sunEq.ra,
                 sunEq.dec,
                 sunEq.distance_au,
                 -26.74,
-                0.0,
+                sunProj.angularDiameterRad,
+                1.0,
                 astro::BodyId::Sun,
                 "Sun (Sol)"
             });
@@ -694,10 +734,22 @@ std::vector<StarProjection> StarCatalog::projectStars(
 
     // Новые тела: провайдеры выдают J2000, дальше применяется тот же PN, что и для звёзд.
     astro::SsdKeplerPlanetProvider planetProvider(/*enableLightTime=*/true, /*iters=*/2);
-    astro::MoonLiteProvider moonProvider;
     appendBodyProjection(planetProvider.computeBody(astro::BodyId::Venus, observationJD));
     appendBodyProjection(planetProvider.computeBody(astro::BodyId::Mars, observationJD));
-    appendBodyProjection(moonProvider.computeMoon(observationJD));
+
+    const std::string elpDataDir = resolveElpDataDirectory();
+    static astro::Elp82bMoonProvider moonElpProvider(elpDataDir, /*precRad=*/0.0);
+    static astro::MoonLiteProvider moonFallbackProvider;
+
+    astro::BodyEquatorial moonBody;
+    if (moonElpProvider.isReady()) {
+        moonBody = moonElpProvider.computeMoon(observationJD);
+    } else {
+        std::cerr << "[StarCatalog] ELP82B unavailable, fallback to MoonLite. Reason: "
+                  << moonElpProvider.lastError() << std::endl;
+        moonBody = moonFallbackProvider.computeMoon(observationJD);
+    }
+    appendBodyProjection(moonBody);
 
     for (auto &star : stars) {
 
@@ -749,6 +801,9 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.starId    = star.id;
         pr.raRad     = ra;
         pr.decRad    = dec;
+        pr.angularDiameterRad = 0.0;
+        pr.illumination = -1.0;
+        pr.isSpecialBody = false;
         pr.displayName = makeDisplayName(star);
         pr.catalogDesignations = buildCatalogDesignations(star, pr.displayName);
         projected.push_back(pr);

@@ -369,7 +369,9 @@ BodyEquatorial MoonLiteProvider::computeMoon(double jd_tt, const MoonObserverEqD
     };
 
     const double phaseDeg = phaseAngleDeg(moonEqDateAu, sunEqDateAu);
+    const double phaseRad = phaseDeg * DEG_TO_RAD;
     const double magnitude = -12.73 + 0.026 * phaseDeg + 4.0e-9 * std::pow(phaseDeg, 4.0);
+    const double illumination = 0.5 * (1.0 + std::cos(phaseRad));
 
     // Convert date-frame equatorial vector back to J2000 so StarCatalog can apply one common PN step.
     double PN[3][3], PNinv[3][3];
@@ -389,6 +391,7 @@ BodyEquatorial MoonLiteProvider::computeMoon(double jd_tt, const MoonObserverEqD
     out.distanceAu = topoDistanceKm / KM_PER_AU;
     out.magnitude = magnitude;
     out.angularDiameterRad = 2.0 * std::atan(MOON_RADIUS_KM / topoDistanceKm);
+    out.illumination = std::clamp(illumination, 0.0, 1.0);
     out.bodyId = BodyId::Moon;
     out.name = "Moon";
 

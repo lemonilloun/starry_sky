@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <utility>
 #include <cmath>
+#include <unordered_map>
 
 static constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
 static constexpr uint64_t MOON_ID = astro::bodyIdValue(astro::BodyId::Moon);
@@ -56,6 +57,303 @@ QString formatDeclination(double decRad)
         .arg(m, 2, 10, QChar('0'))
         .arg(seconds, 2, 'f', 0, QChar('0'));
 }
+
+double clamp01(double x)
+{
+    return std::clamp(x, 0.0, 1.0);
+}
+
+double smoothstep(double a, double b, double x)
+{
+    if (b <= a)
+        return x < a ? 0.0 : 1.0;
+    double t = clamp01((x - a) / (b - a));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+double noiseHash(int x, int y)
+{
+    uint32_t n = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u;
+    n = (n ^ (n >> 13u)) * 1274126177u;
+    n ^= (n >> 16u);
+    return (n & 0x00FFFFFFu) / static_cast<double>(0x00FFFFFFu);
+}
+
+double valueNoise(double x, double y)
+{
+    const int xi = static_cast<int>(std::floor(x));
+    const int yi = static_cast<int>(std::floor(y));
+    const double tx = x - xi;
+    const double ty = y - yi;
+
+    const double v00 = noiseHash(xi, yi);
+    const double v10 = noiseHash(xi + 1, yi);
+    const double v01 = noiseHash(xi, yi + 1);
+    const double v11 = noiseHash(xi + 1, yi + 1);
+
+    const double sx = smoothstep(0.0, 1.0, tx);
+    const double sy = smoothstep(0.0, 1.0, ty);
+
+    const double a = v00 + (v10 - v00) * sx;
+    const double b = v01 + (v11 - v01) * sx;
+    return a + (b - a) * sy;
+}
+
+double fbm(double x, double y, int octaves = 4)
+{
+    double sum = 0.0;
+    double amp = 0.5;
+    double freq = 1.0;
+    for (int i = 0; i < octaves; ++i) {
+        sum += amp * valueNoise(x * freq, y * freq);
+        freq *= 2.0;
+        amp *= 0.5;
+    }
+    return clamp01(sum);
+}
+
+QColor starColorFromBv(double bv, int brightness)
+{
+    bv = std::clamp(bv, -0.4, 2.0);
+    double r = 0.0;
+    double g = 0.0;
+    double b = 0.0;
+
+    if (bv < 0.0) {
+        const double t = (bv + 0.4) / 0.4;
+        r = 0.61 + 0.11 * t + 0.10 * t * t;
+    } else if (bv < 0.4) {
+        const double t = bv / 0.4;
+        r = 0.83 + 0.17 * t;
+    } else {
+        r = 1.0;
+    }
+
+    if (bv < 0.0) {
+        const double t = (bv + 0.4) / 0.4;
+        g = 0.70 + 0.07 * t + 0.10 * t * t;
+    } else if (bv < 0.4) {
+        const double t = bv / 0.4;
+        g = 0.87 + 0.11 * t;
+    } else if (bv < 1.6) {
+        const double t = (bv - 0.4) / 1.2;
+        g = 0.98 - 0.16 * t;
+    } else {
+        const double t = (bv - 1.6) / 0.4;
+        g = 0.82 - 0.5 * t * t;
+    }
+
+    if (bv < 0.4) {
+        b = 1.0;
+    } else if (bv < 1.5) {
+        const double t = (bv - 0.4) / 1.1;
+        b = 1.0 - 0.47 * t + 0.10 * t * t;
+    } else if (bv < 1.94) {
+        const double t = (bv - 1.5) / 0.44;
+        b = 0.63 - 0.6 * t * t;
+    } else {
+        b = 0.0;
+    }
+
+    const double scale = std::clamp(brightness / 255.0, 0.0, 1.0);
+    const int rr = std::clamp(static_cast<int>(std::lround(255.0 * r * scale)), 0, 255);
+    const int gg = std::clamp(static_cast<int>(std::lround(255.0 * g * scale)), 0, 255);
+    const int bb = std::clamp(static_cast<int>(std::lround(255.0 * b * scale)), 0, 255);
+    return QColor(rr, gg, bb);
+}
+
+struct BodySpriteKey {
+    uint64_t bodyId = 0;
+    int radiusPx = 0;
+    int phaseBin = 0;
+
+    bool operator==(const BodySpriteKey& other) const
+    {
+        return bodyId == other.bodyId
+            && radiusPx == other.radiusPx
+            && phaseBin == other.phaseBin;
+    }
+};
+
+struct BodySpriteKeyHash {
+    std::size_t operator()(const BodySpriteKey& k) const
+    {
+        std::size_t h1 = std::hash<uint64_t>{}(k.bodyId);
+        std::size_t h2 = std::hash<int>{}(k.radiusPx);
+        std::size_t h3 = std::hash<int>{}(k.phaseBin);
+        return h1 ^ (h2 << 1) ^ (h3 << 7);
+    }
+};
+
+std::unordered_map<BodySpriteKey, QImage, BodySpriteKeyHash> g_bodySpriteCache;
+
+QImage makeMoonSprite(int radiusPx, int phaseBin)
+{
+    const int r = std::max(2, radiusPx);
+    const int pad = 2;
+    const int size = 2 * r + 2 * pad;
+    const double c = (size - 1) * 0.5;
+    const double illum = std::clamp(phaseBin / 48.0, 0.0, 1.0);
+    const double lz = 2.0 * illum - 1.0;
+    const double lx = std::sqrt(std::max(0.0, 1.0 - lz * lz));
+
+    QImage img(size, size, QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::transparent);
+
+    for (int y = 0; y < size; ++y) {
+        auto* row = reinterpret_cast<QRgb*>(img.scanLine(y));
+        for (int x = 0; x < size; ++x) {
+            const double nx = (x - c) / r;
+            const double ny = (c - y) / r;
+            const double rr = nx * nx + ny * ny;
+            if (rr > 1.0) {
+                row[x] = qRgba(0, 0, 0, 0);
+                continue;
+            }
+            const double nz = std::sqrt(std::max(0.0, 1.0 - rr));
+            const double ndotl = nx * lx + nz * lz;
+            const double lambert = std::max(0.0, ndotl);
+
+            const double n1 = fbm(nx * 3.5 + 17.3, ny * 3.5 - 5.1, 4);
+            const double n2 = fbm(nx * 8.1 - 9.4, ny * 8.1 + 3.2, 3);
+            const double mare = smoothstep(0.50, 0.75, n1 * 0.75 + n2 * 0.25);
+            const double albedo = std::clamp(0.62 + 0.24 * n1 - 0.26 * mare, 0.28, 0.92);
+
+            const double shade = 0.10 + 0.90 * lambert;
+            const double rim = std::pow(1.0 - nz, 3.0) * 0.18;
+            double rCol = albedo * 0.98 * shade + rim * 0.25;
+            double gCol = albedo * 0.97 * shade + rim * 0.24;
+            double bCol = albedo * 0.95 * shade + rim * 0.23;
+
+            const int alpha = static_cast<int>(std::lround(255.0 * smoothstep(1.0, 0.94, rr)));
+            row[x] = qRgba(
+                std::clamp(static_cast<int>(std::lround(rCol * 255.0)), 0, 255),
+                std::clamp(static_cast<int>(std::lround(gCol * 255.0)), 0, 255),
+                std::clamp(static_cast<int>(std::lround(bCol * 255.0)), 0, 255),
+                alpha
+            );
+        }
+    }
+    return img;
+}
+
+QImage makeVenusSprite(int radiusPx, int phaseBin)
+{
+    const int r = std::max(2, radiusPx);
+    const int pad = 2;
+    const int size = 2 * r + 2 * pad;
+    const double c = (size - 1) * 0.5;
+    const double illum = std::clamp(phaseBin / 48.0, 0.0, 1.0);
+    const double lz = 2.0 * illum - 1.0;
+    const double lx = std::sqrt(std::max(0.0, 1.0 - lz * lz));
+
+    QImage img(size, size, QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::transparent);
+
+    for (int y = 0; y < size; ++y) {
+        auto* row = reinterpret_cast<QRgb*>(img.scanLine(y));
+        for (int x = 0; x < size; ++x) {
+            const double nx = (x - c) / r;
+            const double ny = (c - y) / r;
+            const double rr = nx * nx + ny * ny;
+            if (rr > 1.0) {
+                row[x] = qRgba(0, 0, 0, 0);
+                continue;
+            }
+            const double nz = std::sqrt(std::max(0.0, 1.0 - rr));
+            const double ndotl = nx * lx + nz * lz;
+            const double lambert = std::max(0.0, ndotl);
+            const double softLight = std::pow(lambert, 0.55);
+            const double cloud = 0.92 + 0.08 * fbm(nx * 2.8 + 4.0, ny * 2.8 - 11.0, 3);
+            const double limb = std::pow(1.0 - nz, 2.6) * (0.22 + 0.25 * (1.0 - illum));
+
+            double rCol = (0.96 * cloud) * (0.20 + 0.80 * softLight) + limb * 0.28;
+            double gCol = (0.93 * cloud) * (0.20 + 0.80 * softLight) + limb * 0.24;
+            double bCol = (0.84 * cloud) * (0.20 + 0.80 * softLight) + limb * 0.16;
+
+            const int alpha = static_cast<int>(std::lround(255.0 * smoothstep(1.0, 0.94, rr)));
+            row[x] = qRgba(
+                std::clamp(static_cast<int>(std::lround(rCol * 255.0)), 0, 255),
+                std::clamp(static_cast<int>(std::lround(gCol * 255.0)), 0, 255),
+                std::clamp(static_cast<int>(std::lround(bCol * 255.0)), 0, 255),
+                alpha
+            );
+        }
+    }
+    return img;
+}
+
+QImage makeMarsSprite(int radiusPx, int phaseBin)
+{
+    const int r = std::max(2, radiusPx);
+    const int pad = 2;
+    const int size = 2 * r + 2 * pad;
+    const double c = (size - 1) * 0.5;
+    const double illum = std::clamp(phaseBin / 48.0, 0.0, 1.0);
+    const double lz = 2.0 * illum - 1.0;
+    const double lx = std::sqrt(std::max(0.0, 1.0 - lz * lz));
+
+    QImage img(size, size, QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::transparent);
+
+    for (int y = 0; y < size; ++y) {
+        auto* row = reinterpret_cast<QRgb*>(img.scanLine(y));
+        for (int x = 0; x < size; ++x) {
+            const double nx = (x - c) / r;
+            const double ny = (c - y) / r;
+            const double rr = nx * nx + ny * ny;
+            if (rr > 1.0) {
+                row[x] = qRgba(0, 0, 0, 0);
+                continue;
+            }
+            const double nz = std::sqrt(std::max(0.0, 1.0 - rr));
+            const double ndotl = nx * lx + nz * lz;
+            const double lambert = std::max(0.0, ndotl);
+            const double terrain = fbm(nx * 3.2 + 1.7, ny * 3.2 - 7.9, 4);
+            const double darkSpot = std::exp(-((nx - 0.20) * (nx - 0.20) + (ny + 0.08) * (ny + 0.08)) / 0.05);
+            const double cap = smoothstep(0.60, 0.86, ny + 0.08 * terrain);
+
+            double dust = std::clamp(0.62 + 0.26 * terrain - 0.30 * darkSpot, 0.20, 1.0);
+            const double shade = 0.16 + 0.84 * lambert;
+            const double haze = std::pow(1.0 - nz, 2.0) * 0.15;
+
+            double rCol = dust * 0.86 * shade + haze * 0.10 + cap * 0.22;
+            double gCol = dust * 0.50 * shade + haze * 0.13 + cap * 0.24;
+            double bCol = dust * 0.34 * shade + haze * 0.20 + cap * 0.28;
+
+            const int alpha = static_cast<int>(std::lround(255.0 * smoothstep(1.0, 0.94, rr)));
+            row[x] = qRgba(
+                std::clamp(static_cast<int>(std::lround(rCol * 255.0)), 0, 255),
+                std::clamp(static_cast<int>(std::lround(gCol * 255.0)), 0, 255),
+                std::clamp(static_cast<int>(std::lround(bCol * 255.0)), 0, 255),
+                alpha
+            );
+        }
+    }
+    return img;
+}
+
+QImage bodySpriteCached(uint64_t bodyId, int radiusPx, double illumination)
+{
+    const int phaseBin = std::clamp(static_cast<int>(std::lround(clamp01(illumination) * 48.0)), 0, 48);
+    const BodySpriteKey key{bodyId, std::max(2, radiusPx), phaseBin};
+    auto it = g_bodySpriteCache.find(key);
+    if (it != g_bodySpriteCache.end())
+        return it->second;
+
+    QImage generated;
+    if (bodyId == MOON_ID) {
+        generated = makeMoonSprite(key.radiusPx, key.phaseBin);
+    } else if (bodyId == VENUS_ID) {
+        generated = makeVenusSprite(key.radiusPx, key.phaseBin);
+    } else if (bodyId == MARS_ID) {
+        generated = makeMarsSprite(key.radiusPx, key.phaseBin);
+    } else {
+        generated = QImage();
+    }
+    g_bodySpriteCache.emplace(key, generated);
+    return generated;
+}
 } // namespace
 
 StarMapWidget::StarMapWidget(
@@ -81,8 +379,8 @@ StarMapWidget::StarMapWidget(
       m_observation(observation)
 {
     setFocusPolicy(Qt::StrongFocus);
-    // 1) чёрно-белый холст
-    starMapImage = QImage(1081, 761, QImage::Format_Grayscale8);
+    // 1) Цветной холст (сохраняем всю текущую логику рендера, blur и flare)
+    starMapImage = QImage(1081, 761, QImage::Format_ARGB32_Premultiplied);
     starMapImage.fill(Qt::black);
 
     // 2) рисуем все точки (звёзды + диск Солнца, если он в кадре)
@@ -224,11 +522,14 @@ void StarMapWidget::renderStars()
         m_pixelPositions[i] = QPointF(sx, sy);
 
         if (id == SUN_ID) {
-            // сам диск солнца чуть больше и жёлтый
-            QColor sunCol(255, 230, 150);
+            // Солнце: нейтрально-белый стиль без чрезмерной желтизны.
+            QRadialGradient sunGrad(QPointF(sx - 9.0, sy - 10.0), sunVisualRadiusPx * 1.25);
+            sunGrad.setColorAt(0.0, QColor(255, 255, 252, 255));
+            sunGrad.setColorAt(0.58, QColor(246, 244, 236, 245));
+            sunGrad.setColorAt(1.0, QColor(232, 226, 205, 210));
             p.setPen(Qt::NoPen);
-            p.setBrush(sunCol);
-            p.drawEllipse(QPointF(sx, sy), 48.0, sunVisualRadiusPx);
+            p.setBrush(sunGrad);
+            p.drawEllipse(QPointF(sx, sy), sunVisualRadiusPx * 0.93, sunVisualRadiusPx);
             m_pixelRadii[i] = sunVisualRadiusPx;
         } else if (id == MOON_ID) {
             const double moonAngularDiamRad = (proj.angularDiameterRad > 0.0)
@@ -242,27 +543,8 @@ void StarMapWidget::renderStars()
             double moonDiamPx = 0.80 * moonDiamStyled + 0.20 * moonDiamPhys;
             moonDiamPx = std::clamp(moonDiamPx, 0.82 * sunVisualDiamPx, 1.02 * sunVisualDiamPx);
             const double r = 0.5 * moonDiamPx;
-            const double glowR = r * 1.9;
             const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
 
-            // Soft moon glow so the Moon stands out as a special body.
-            QRadialGradient glowGrad(QPointF(sx, sy), glowR);
-            glowGrad.setColorAt(0.0, QColor(190, 205, 245, 75));
-            glowGrad.setColorAt(0.45, QColor(155, 170, 210, 30));
-            glowGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
-            p.setPen(Qt::NoPen);
-            p.setBrush(glowGrad);
-            p.drawEllipse(QPointF(sx, sy), glowR, glowR);
-
-            // Moon disk with a subtle phase-like gradient.
-            QRadialGradient moonGrad(QPointF(sx - r * 0.25, sy - r * 0.25), r * 1.35);
-            moonGrad.setColorAt(0.0, QColor(252, 252, 245));
-            moonGrad.setColorAt(0.62, QColor(220, 224, 230));
-            moonGrad.setColorAt(1.0, QColor(130, 136, 148));
-            p.setBrush(moonGrad);
-            p.drawEllipse(QPointF(sx, sy), r, r);
-
-            // Phase mask: the dark limb is oriented opposite to the Sun direction.
             double dirX = -1.0;
             double dirY = 0.0;
             if (hasSunPix) {
@@ -274,36 +556,87 @@ void StarMapWidget::renderStars()
                     dirY = vy / vn;
                 }
             }
-            const double terminator = 1.0 - 2.0 * illumination;
-            const double shadowShift = terminator * r;
+            const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
-            p.save();
-            QPainterPath moonDiskClip;
-            moonDiskClip.addEllipse(QPointF(sx, sy), r, r);
-            p.setClipPath(moonDiskClip);
+            // Soft moon glow
+            const double glowR = r * 1.85;
+            QRadialGradient glowGrad(QPointF(sx, sy), glowR);
+            glowGrad.setColorAt(0.0, QColor(205, 214, 245, 78));
+            glowGrad.setColorAt(0.45, QColor(165, 177, 214, 32));
+            glowGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(12, 15, 22, 165));
-            p.drawEllipse(
-                QPointF(sx + dirX * shadowShift, sy + dirY * shadowShift),
-                r,
-                r
-            );
+            p.setBrush(glowGrad);
+            p.drawEllipse(QPointF(sx, sy), glowR, glowR);
+
+            QImage moonSprite = bodySpriteCached(MOON_ID, static_cast<int>(std::lround(r)), illumination);
+            p.save();
+            p.translate(sx, sy);
+            p.rotate(angleDeg);
+            p.drawImage(QPointF(-moonSprite.width() * 0.5, -moonSprite.height() * 0.5), moonSprite);
             p.restore();
 
             m_pixelRadii[i] = r;
         } else if (id == VENUS_ID) {
             const double bf = 27.0 / std::pow(2.512, m);
             const double r = std::max(5.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
+            double dirX = -1.0;
+            double dirY = 0.0;
+            if (hasSunPix) {
+                const double vx = sunPix.x() - sx;
+                const double vy = sunPix.y() - sy;
+                const double vn = std::hypot(vx, vy);
+                if (vn > 1e-9) {
+                    dirX = vx / vn;
+                    dirY = vy / vn;
+                }
+            }
+            const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
+
+            QRadialGradient glowGrad(QPointF(sx, sy), r * 2.5);
+            glowGrad.setColorAt(0.0, QColor(255, 244, 200, 85));
+            glowGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(255, 245, 170));
-            p.drawEllipse(QPointF(sx, sy), r, r);
+            p.setBrush(glowGrad);
+            p.drawEllipse(QPointF(sx, sy), r * 2.5, r * 2.5);
+
+            QImage venusSprite = bodySpriteCached(VENUS_ID, static_cast<int>(std::lround(r)), illumination);
+            p.save();
+            p.translate(sx, sy);
+            p.rotate(angleDeg);
+            p.drawImage(QPointF(-venusSprite.width() * 0.5, -venusSprite.height() * 0.5), venusSprite);
+            p.restore();
             m_pixelRadii[i] = r;
         } else if (id == MARS_ID) {
             const double bf = 27.0 / std::pow(2.512, m);
             const double r = std::max(4.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
+            double dirX = -1.0;
+            double dirY = 0.0;
+            if (hasSunPix) {
+                const double vx = sunPix.x() - sx;
+                const double vy = sunPix.y() - sy;
+                const double vn = std::hypot(vx, vy);
+                if (vn > 1e-9) {
+                    dirX = vx / vn;
+                    dirY = vy / vn;
+                }
+            }
+            const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
+
+            QRadialGradient haze(QPointF(sx, sy), r * 1.7);
+            haze.setColorAt(0.0, QColor(180, 210, 245, 25));
+            haze.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(255, 150, 120));
-            p.drawEllipse(QPointF(sx, sy), r, r);
+            p.setBrush(haze);
+            p.drawEllipse(QPointF(sx, sy), r * 1.7, r * 1.7);
+
+            QImage marsSprite = bodySpriteCached(MARS_ID, static_cast<int>(std::lround(r)), illumination);
+            p.save();
+            p.translate(sx, sy);
+            p.rotate(angleDeg);
+            p.drawImage(QPointF(-marsSprite.width() * 0.5, -marsSprite.height() * 0.5), marsSprite);
+            p.restore();
             m_pixelRadii[i] = r;
         } else {
             // обычная звезда
@@ -312,7 +645,9 @@ void StarMapWidget::renderStars()
             double baseR = std::clamp(1.5*std::sqrt(bf), 1.0, 4.0);
             double r     = baseR * starSizeFactor;
 
-            QColor col(br, br, br);
+            QColor col = proj.hasColorIndex
+                ? starColorFromBv(proj.colorIndex, br)
+                : QColor(br, br, br);
             p.setPen(Qt::NoPen);
             p.setBrush(col);
             p.drawEllipse(QPointF(sx, sy), r, r);

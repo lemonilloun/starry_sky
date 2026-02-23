@@ -669,6 +669,8 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.starId = static_cast<double>(astro::bodyIdValue(body.bodyId));
         pr.raRad = raDate;
         pr.decRad = decDate;
+        pr.colorIndex = 0.0;
+        pr.hasColorIndex = false;
         pr.angularDiameterRad = body.angularDiameterRad;
         pr.illumination = body.illumination;
         pr.isSpecialBody = true;
@@ -714,6 +716,8 @@ std::vector<StarProjection> StarCatalog::projectStars(
             sunProj.starId    = SUN_ID;
             sunProj.raRad     = sunEq.ra;
             sunProj.decRad    = sunEq.dec;
+            sunProj.colorIndex = 0.0;
+            sunProj.hasColorIndex = false;
             sunProj.angularDiameterRad = 2.0 * std::atan(695700.0 / (sunEq.distance_au * 149597870.7));
             sunProj.illumination = 1.0;
             sunProj.isSpecialBody = true;
@@ -801,6 +805,8 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.starId    = star.id;
         pr.raRad     = ra;
         pr.decRad    = dec;
+        pr.colorIndex = star.colorIndex;
+        pr.hasColorIndex = true;
         pr.angularDiameterRad = 0.0;
         pr.illumination = -1.0;
         pr.isSpecialBody = false;

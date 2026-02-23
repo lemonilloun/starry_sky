@@ -53,30 +53,40 @@ double GaussianBlur::gaussian(int x, int y, double sigmaX, double sigmaY, double
 
 // Применение фильтра Гаусса к изображению
 QImage GaussianBlur::applyGaussianBlur(const QImage& image, int kernelSize, double sigmaX, double sigmaY, double rho, double mX, double mY) {
-    QImage grayscaleImage = toGrayscale(image);  // Перевод в черно-белое изображение
-    int width = grayscaleImage.width();
-    int height = grayscaleImage.height();
-    QImage resultImage(width, height, QImage::Format_Grayscale8);
+    QImage src = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    int width = src.width();
+    int height = src.height();
+    QImage resultImage(width, height, QImage::Format_ARGB32_Premultiplied);
 
     auto kernel = createGaussianKernel(kernelSize, sigmaX, sigmaY, rho, mX, mY);
     int halfSize = kernelSize / 2;
 
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            double sum = 0.0;
+            double sumR = 0.0;
+            double sumG = 0.0;
+            double sumB = 0.0;
+            double sumA = 0.0;
 
             // Применение свертки
             for (int ky = 0; ky < kernelSize; ky++) {
                 for (int kx = 0; kx < kernelSize; kx++) {
                     int pixelX = std::clamp(x + kx - halfSize, 0, width - 1);
                     int pixelY = std::clamp(y + ky - halfSize, 0, height - 1);
-                    int pixelValue = qGray(grayscaleImage.pixel(pixelX, pixelY));
-                    sum += pixelValue * kernel[ky][kx];
+                    QRgb pixelValue = src.pixel(pixelX, pixelY);
+                    const double w = kernel[ky][kx];
+                    sumR += qRed(pixelValue)   * w;
+                    sumG += qGreen(pixelValue) * w;
+                    sumB += qBlue(pixelValue)  * w;
+                    sumA += qAlpha(pixelValue) * w;
                 }
             }
 
-            int newValue = std::clamp(static_cast<int>(sum), 0, 255);
-            resultImage.setPixel(x, y, qRgb(newValue, newValue, newValue));
+            int r = std::clamp(static_cast<int>(sumR), 0, 255);
+            int g = std::clamp(static_cast<int>(sumG), 0, 255);
+            int b = std::clamp(static_cast<int>(sumB), 0, 255);
+            int a = std::clamp(static_cast<int>(sumA), 0, 255);
+            resultImage.setPixel(x, y, qRgba(r, g, b, a));
         }
     }
 

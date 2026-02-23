@@ -6,6 +6,7 @@ INCLUDEPATH += src/Headers
 
 SOURCES += \
     src/Sources/CelestialBodyTypes.cpp \
+    src/Sources/Elp82bMoonProvider.cpp \
     src/Sources/GaussianBlur.cpp \
     src/Sources/LightPollution.cpp \
     src/Sources/MoonEphemeris.cpp \
@@ -20,6 +21,7 @@ SOURCES += \
 
 HEADERS += \
     src/Headers/CelestialBodyTypes.h \
+    src/Headers/Elp82bMoonProvider.h \
     src/Headers/GaussianBlur.h \
     src/Headers/LightPollution.h \
     src/Headers/MoonEphemeris.h \
@@ -37,6 +39,8 @@ FORMS += \
 DISTFILES += \
     src/data/Catalogue.csv \
     src/data/Catalogue_clean.csv \
+    src/data/elp82b/README \
+    src/data/elp82b/elp82b_2 \
     src/research/data_cleaning.ipynb \
     src/research/star_sky_image.py \
     starry_sky.pro.user

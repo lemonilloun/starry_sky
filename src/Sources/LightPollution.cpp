@@ -21,7 +21,7 @@ QImage LightPollution::applySunFlare(
     ) {
     int W = image.width();
     int H = image.height();
-    QImage result = image;
+    QImage result = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     QPainter p(&result);
     p.setRenderHint(QPainter::Antialiasing);
 
@@ -128,7 +128,7 @@ QImage LightPollution::applySunFlare(
     }
     noisyCore.closeSubpath();
 
-    p.setBrush(QColor(255, 230, 150, 200)); // полупрозрачный жёлтый
+    p.setBrush(QColor(248, 244, 232, 200)); // более нейтральный цвет ядра
     p.setPen(Qt::NoPen);
     p.drawPath(noisyCore);
 
@@ -142,24 +142,21 @@ QImage LightPollution::applyGlobalBoost(
     ) {
     int W = image.width();
     int H = image.height();
-    QImage result = image.convertToFormat(QImage::Format_Grayscale8);
+    QImage result = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 
     for (int y = 0; y < H; ++y) {
-        uchar* scan = result.scanLine(y);
+        auto* scan = reinterpret_cast<QRgb*>(result.scanLine(y));
         for (int x = 0; x < W; ++x) {
-            // текущая яркость
-            int v = scan[x];
+            QRgb px = scan[x];
+            const int a = qAlpha(px);
+            const double noise = (QRandomGenerator::global()->generateDouble() * 2.0 - 1.0)
+                               * noiseAmplitude * 255.0;
+            const double add = boost * 255.0 + noise;
 
-            // + небольшой «серый» буст
-            double vf = v + boost * 255.0;
-
-            // + шум в диапазоне [-noiseAmplitude, +noiseAmplitude]
-            double noise = (QRandomGenerator::global()->generateDouble() * 2.0 - 1.0)
-                           * noiseAmplitude * 255.0;
-            int v2 = std::lround(vf + noise);
-
-            // clamp 0..255
-            scan[x] = static_cast<uchar>(qBound(0, v2, 255));
+            int r = qBound(0, std::lround(qRed(px) + add), 255);
+            int g = qBound(0, std::lround(qGreen(px) + add), 255);
+            int b = qBound(0, std::lround(qBlue(px) + add), 255);
+            scan[x] = qRgba(r, g, b, a);
         }
     }
 

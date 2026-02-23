@@ -30,6 +30,8 @@ struct StarProjection {
     double starId;
     double raRad;     // прямое восхождение (рад) на дату наблюдения
     double decRad;    // склонение (рад) на дату наблюдения
+    double colorIndex = 0.0;
+    bool hasColorIndex = false;
     double angularDiameterRad = 0.0;
     double illumination = -1.0; // 0..1 для Луны, иначе -1
     bool isSpecialBody = false;

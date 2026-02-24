@@ -71,6 +71,13 @@ double smoothstep(double a, double b, double x)
     return t * t * (3.0 - 2.0 * t);
 }
 
+double pixelDiameterFromAngular(double angularDiameterRad, double scale)
+{
+    if (!(angularDiameterRad > 0.0) || !(scale > 0.0))
+        return 0.0;
+    return 2.0 * scale * std::tan(0.5 * angularDiameterRad);
+}
+
 double noiseHash(int x, int y)
 {
     uint32_t n = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u;
@@ -189,7 +196,7 @@ std::unordered_map<BodySpriteKey, QImage, BodySpriteKeyHash> g_bodySpriteCache;
 
 QImage makeMoonSprite(int radiusPx, int phaseBin)
 {
-    const int r = std::max(2, radiusPx);
+    const int r = std::max(1, radiusPx);
     const int pad = 2;
     const int size = 2 * r + 2 * pad;
     const double c = (size - 1) * 0.5;
@@ -239,7 +246,7 @@ QImage makeMoonSprite(int radiusPx, int phaseBin)
 
 QImage makeVenusSprite(int radiusPx, int phaseBin)
 {
-    const int r = std::max(2, radiusPx);
+    const int r = std::max(1, radiusPx);
     const int pad = 2;
     const int size = 2 * r + 2 * pad;
     const double c = (size - 1) * 0.5;
@@ -285,7 +292,7 @@ QImage makeVenusSprite(int radiusPx, int phaseBin)
 
 QImage makeMarsSprite(int radiusPx, int phaseBin)
 {
-    const int r = std::max(2, radiusPx);
+    const int r = std::max(1, radiusPx);
     const int pad = 2;
     const int size = 2 * r + 2 * pad;
     const double c = (size - 1) * 0.5;
@@ -336,7 +343,7 @@ QImage makeMarsSprite(int radiusPx, int phaseBin)
 QImage bodySpriteCached(uint64_t bodyId, int radiusPx, double illumination)
 {
     const int phaseBin = std::clamp(static_cast<int>(std::lround(clamp01(illumination) * 48.0)), 0, 48);
-    const BodySpriteKey key{bodyId, std::max(2, radiusPx), phaseBin};
+    const BodySpriteKey key{bodyId, std::max(1, radiusPx), phaseBin};
     auto it = g_bodySpriteCache.find(key);
     if (it != g_bodySpriteCache.end())
         return it->second;
@@ -363,6 +370,7 @@ StarMapWidget::StarMapWidget(
     bool                         blurEnabled,
     const FlareParams            flareParams,
     bool                         flareEnabled,
+    PlanetRenderSizeMode         planetSizeMode,
     ObservationInfo              observation,
     QWidget*                     parent
     )
@@ -374,6 +382,7 @@ StarMapWidget::StarMapWidget(
       m_blurEnabled(blurEnabled),
       flareParams(flareParams),
       m_flareEnabled(flareEnabled),
+      m_planetSizeMode(planetSizeMode),
       m_infoPopup(nullptr),
       m_infoLabel(nullptr),
       m_observation(observation)
@@ -558,11 +567,11 @@ void StarMapWidget::renderStars()
             }
             const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
-            // Soft moon glow
-            const double glowR = r * 1.85;
+            // Soft moon glow (intentionally reduced vs previous version)
+            const double glowR = r * 1.22;
             QRadialGradient glowGrad(QPointF(sx, sy), glowR);
-            glowGrad.setColorAt(0.0, QColor(205, 214, 245, 78));
-            glowGrad.setColorAt(0.45, QColor(165, 177, 214, 32));
+            glowGrad.setColorAt(0.0, QColor(205, 214, 245, 22));
+            glowGrad.setColorAt(0.45, QColor(165, 177, 214, 8));
             glowGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
             p.setBrush(glowGrad);
@@ -577,8 +586,19 @@ void StarMapWidget::renderStars()
 
             m_pixelRadii[i] = r;
         } else if (id == VENUS_ID) {
-            const double bf = 27.0 / std::pow(2.512, m);
-            const double r = std::max(5.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            double r = 1.0;
+            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced) {
+                const double bf = 27.0 / std::pow(2.512, m);
+                r = std::max(5.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            } else {
+                const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
+                double rPhys = 0.5 * diamPhysPx;
+                if (!(rPhys > 0.0)) {
+                    const double bfFallback = 27.0 / std::pow(2.512, m);
+                    rPhys = std::clamp(0.35 * std::sqrt(std::max(0.0, bfFallback)), 0.35, 1.2);
+                }
+                r = std::max(0.70, rPhys);
+            }
             const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
             double dirX = -1.0;
             double dirY = 0.0;
@@ -593,23 +613,43 @@ void StarMapWidget::renderStars()
             }
             const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
-            QRadialGradient glowGrad(QPointF(sx, sy), r * 2.5);
-            glowGrad.setColorAt(0.0, QColor(255, 244, 200, 85));
+            const double glowRadius = (m_planetSizeMode == PlanetRenderSizeMode::Enhanced)
+                ? (r * 2.5)
+                : std::max(r * 2.4, 2.2 + std::max(0.0, -m) * 0.45);
+            QRadialGradient glowGrad(QPointF(sx, sy), glowRadius);
+            glowGrad.setColorAt(0.0, QColor(255, 244, 200, 72));
             glowGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
             p.setBrush(glowGrad);
-            p.drawEllipse(QPointF(sx, sy), r * 2.5, r * 2.5);
+            p.drawEllipse(QPointF(sx, sy), glowRadius, glowRadius);
 
-            QImage venusSprite = bodySpriteCached(VENUS_ID, static_cast<int>(std::lround(r)), illumination);
-            p.save();
-            p.translate(sx, sy);
-            p.rotate(angleDeg);
-            p.drawImage(QPointF(-venusSprite.width() * 0.5, -venusSprite.height() * 0.5), venusSprite);
-            p.restore();
+            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced || r >= 1.6) {
+                QImage venusSprite = bodySpriteCached(VENUS_ID, static_cast<int>(std::lround(r)), illumination);
+                p.save();
+                p.translate(sx, sy);
+                p.rotate(angleDeg);
+                p.drawImage(QPointF(-venusSprite.width() * 0.5, -venusSprite.height() * 0.5), venusSprite);
+                p.restore();
+            } else {
+                p.setBrush(QColor(244, 235, 206));
+                p.setPen(Qt::NoPen);
+                p.drawEllipse(QPointF(sx, sy), r, r);
+            }
             m_pixelRadii[i] = r;
         } else if (id == MARS_ID) {
-            const double bf = 27.0 / std::pow(2.512, m);
-            const double r = std::max(4.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            double r = 1.0;
+            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced) {
+                const double bf = 27.0 / std::pow(2.512, m);
+                r = std::max(4.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            } else {
+                const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
+                double rPhys = 0.5 * diamPhysPx;
+                if (!(rPhys > 0.0)) {
+                    const double bfFallback = 27.0 / std::pow(2.512, m);
+                    rPhys = std::clamp(0.32 * std::sqrt(std::max(0.0, bfFallback)), 0.30, 1.0);
+                }
+                r = std::max(0.60, rPhys);
+            }
             const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
             double dirX = -1.0;
             double dirY = 0.0;
@@ -624,19 +664,28 @@ void StarMapWidget::renderStars()
             }
             const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
-            QRadialGradient haze(QPointF(sx, sy), r * 1.7);
-            haze.setColorAt(0.0, QColor(180, 210, 245, 25));
+            const double hazeR = (m_planetSizeMode == PlanetRenderSizeMode::Enhanced)
+                ? (r * 1.7)
+                : std::max(r * 1.8, 1.8 + std::max(0.0, -m) * 0.22);
+            QRadialGradient haze(QPointF(sx, sy), hazeR);
+            haze.setColorAt(0.0, QColor(180, 210, 245, 16));
             haze.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
             p.setBrush(haze);
-            p.drawEllipse(QPointF(sx, sy), r * 1.7, r * 1.7);
+            p.drawEllipse(QPointF(sx, sy), hazeR, hazeR);
 
-            QImage marsSprite = bodySpriteCached(MARS_ID, static_cast<int>(std::lround(r)), illumination);
-            p.save();
-            p.translate(sx, sy);
-            p.rotate(angleDeg);
-            p.drawImage(QPointF(-marsSprite.width() * 0.5, -marsSprite.height() * 0.5), marsSprite);
-            p.restore();
+            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced || r >= 1.6) {
+                QImage marsSprite = bodySpriteCached(MARS_ID, static_cast<int>(std::lround(r)), illumination);
+                p.save();
+                p.translate(sx, sy);
+                p.rotate(angleDeg);
+                p.drawImage(QPointF(-marsSprite.width() * 0.5, -marsSprite.height() * 0.5), marsSprite);
+                p.restore();
+            } else {
+                p.setBrush(QColor(201, 120, 88));
+                p.setPen(Qt::NoPen);
+                p.drawEllipse(QPointF(sx, sy), r, r);
+            }
             m_pixelRadii[i] = r;
         } else {
             // обычная звезда

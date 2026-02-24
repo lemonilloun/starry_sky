@@ -35,6 +35,7 @@ private:
 
     bool        m_blurEnabled;
     bool        m_flareEnabled;
+    PlanetRenderSizeMode m_planetSizeMode;
 };
 
 #endif // MAINWINDOW_H

@@ -5,6 +5,7 @@
 #include <QDoubleSpinBox>
 #include <QDialogButtonBox>
 #include <QCheckBox>
+#include <QComboBox>
 
 SettingsDialog::SettingsDialog(QWidget* parent)
     : QDialog(parent)
@@ -95,6 +96,16 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     m_coreRadius->setValue(52.0);
     form->addRow("Радиус ядра Солнца", m_coreRadius);
 
+    //
+    // === Секция 3: Режим размеров планет ===
+    //
+    form->addRow(new QLabel("<b>Планеты</b>"));
+    m_planetSizeMode = new QComboBox;
+    m_planetSizeMode->addItem("Реальный размер");
+    m_planetSizeMode->addItem("Визуально увеличенный");
+    m_planetSizeMode->setCurrentIndex(static_cast<int>(PlanetRenderSizeMode::Real));
+    form->addRow("Режим размеров", m_planetSizeMode);
+
     // Кнопки ОК/Отмена
     m_buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     form->addWidget(m_buttons);
@@ -143,3 +154,17 @@ bool SettingsDialog::blurEnabled()  const { return m_blurEnabled->isChecked(); }
 void SettingsDialog::setBlurEnabled(bool e)   { m_blurEnabled->setChecked(e); }
 bool SettingsDialog::flareEnabled() const { return m_flareEnabled->isChecked(); }
 void SettingsDialog::setFlareEnabled(bool e) { m_flareEnabled->setChecked(e); }
+
+PlanetRenderSizeMode SettingsDialog::planetSizeMode() const
+{
+    const int idx = m_planetSizeMode ? m_planetSizeMode->currentIndex() : 0;
+    if (idx == static_cast<int>(PlanetRenderSizeMode::Enhanced))
+        return PlanetRenderSizeMode::Enhanced;
+    return PlanetRenderSizeMode::Real;
+}
+
+void SettingsDialog::setPlanetSizeMode(PlanetRenderSizeMode mode)
+{
+    if (m_planetSizeMode)
+        m_planetSizeMode->setCurrentIndex(static_cast<int>(mode));
+}

@@ -5,6 +5,7 @@ class QSpinBox;
 class QDoubleSpinBox;
 class QDialogButtonBox;
 class QCheckBox;
+class QComboBox;
 
 struct FlareParams {
     double baseIntensity;
@@ -22,6 +23,11 @@ struct BlurParams {
     double rho;
 };
 
+enum class PlanetRenderSizeMode {
+    Real = 0,
+    Enhanced = 1
+};
+
 class SettingsDialog : public QDialog {
     Q_OBJECT
 public:
@@ -32,9 +38,11 @@ public:
 
     bool blurEnabled()  const;
     bool flareEnabled() const;
+    PlanetRenderSizeMode planetSizeMode() const;
 
     void setBlurEnabled(bool  e);
     void setFlareEnabled(bool e);
+    void setPlanetSizeMode(PlanetRenderSizeMode mode);
 
     void setBlurParams (const BlurParams& p);
     void setFlareParams(const FlareParams& p);
@@ -56,6 +64,8 @@ private:
     QDoubleSpinBox* m_rayIntensity;
     QDoubleSpinBox* m_maxRayLengthFactor;
     QDoubleSpinBox* m_coreRadius;
+
+    QComboBox*      m_planetSizeMode;
 
     QDialogButtonBox* m_buttons;
 };

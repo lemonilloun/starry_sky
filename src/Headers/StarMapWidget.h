@@ -41,6 +41,7 @@ public:
         bool                         blurEnabled,
         FlareParams                  flareParams,
         bool                         flareEnabled,
+        PlanetRenderSizeMode         planetSizeMode,
         ObservationInfo              observation,
         QWidget*                     parent = nullptr
         );
@@ -68,6 +69,7 @@ private:
     bool                        m_blurEnabled;
     FlareParams                 flareParams;
     bool                        m_flareEnabled;
+    PlanetRenderSizeMode        m_planetSizeMode;
 
     QImage starMapImage;
     QImage blurredImage;

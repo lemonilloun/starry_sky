@@ -18,6 +18,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_flareParams  { 0.6,  1.2, 128, 0.2, 0.3, 52.0 }
     , m_blurEnabled(true)
     , m_flareEnabled(true)
+    , m_planetSizeMode(PlanetRenderSizeMode::Real)
 {
     ui->setupUi(this);
 
@@ -79,11 +80,13 @@ void MainWindow::on_settingsButton_clicked() {
     dlg.setBlurEnabled(m_blurEnabled);
     dlg.setFlareParams(m_flareParams);
     dlg.setFlareEnabled(m_flareEnabled);
+    dlg.setPlanetSizeMode(m_planetSizeMode);
     if (dlg.exec() == QDialog::Accepted) {
         m_blurParams  = dlg.blurParams();
         m_flareParams = dlg.flareParams();
         m_blurEnabled  = dlg.blurEnabled();
         m_flareEnabled = dlg.flareEnabled();
+        m_planetSizeMode = dlg.planetSizeMode();
         buildStarMap();
     }
 }
@@ -156,6 +159,7 @@ void MainWindow::buildStarMap()
         m_blurEnabled,
         m_flareParams,
         m_flareEnabled,
+        m_planetSizeMode,
         obsInfo,
         ui->MapWidget
         );

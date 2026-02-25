@@ -43,12 +43,21 @@ public:
         bool                         flareEnabled,
         PlanetRenderSizeMode         planetSizeMode,
         ObservationInfo              observation,
+        bool                         zoomActive,
+        double                       zoomFactor,
         QWidget*                     parent = nullptr
         );
+
+signals:
+    void zoomToggleRequested();
+    void zoomStepRequested(int direction);
+    void zoomCenterRequested(double xi, double eta);
+    void zoomExitRequested();
 
 protected:
     void paintEvent(QPaintEvent*) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
 
 private:
@@ -87,6 +96,8 @@ private:
     QLabel*  m_infoLabel = nullptr;
     ObservationInfo        m_observation;
     int                    m_selectedIndex = -1;
+    bool                   m_zoomActive = false;
+    double                 m_zoomFactor = 1.0;
 };
 
 #endif // STARMAPWIDGET_H

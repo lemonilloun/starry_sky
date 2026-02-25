@@ -16,6 +16,7 @@ SOURCES += \
     src/Sources/SunEphemeris.cpp \
     src/Sources/StarCatalog.cpp \
     src/Sources/StarMapWidget.cpp \
+    src/Sources/ZoomInspectorMath.cpp \
     src/Sources/main.cpp \
     src/Sources/mainwindow.cpp
 
@@ -31,6 +32,7 @@ HEADERS += \
     src/Headers/SunEphemeris.h \
     src/Headers/StarCatalog.h \
     src/Headers/StarMapWidget.h \
+    src/Headers/ZoomInspectorMath.h \
     src/Headers/mainwindow.h
 
 FORMS += \

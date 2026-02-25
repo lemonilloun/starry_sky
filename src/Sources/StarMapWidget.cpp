@@ -76,6 +76,11 @@ double smoothstep(double a, double b, double x)
     return t * t * (3.0 - 2.0 * t);
 }
 
+double lerp(double a, double b, double t)
+{
+    return a + (b - a) * t;
+}
+
 double pixelDiameterFromAngular(double angularDiameterRad, double scale)
 {
     if (!(angularDiameterRad > 0.0) || !(scale > 0.0))
@@ -377,6 +382,8 @@ StarMapWidget::StarMapWidget(
     bool                         flareEnabled,
     PlanetRenderSizeMode         planetSizeMode,
     ObservationInfo              observation,
+    bool                         zoomActive,
+    double                       zoomFactor,
     QWidget*                     parent
     )
     : QWidget(parent),
@@ -390,7 +397,9 @@ StarMapWidget::StarMapWidget(
       m_planetSizeMode(planetSizeMode),
       m_infoPopup(nullptr),
       m_infoLabel(nullptr),
-      m_observation(observation)
+      m_observation(observation),
+      m_zoomActive(zoomActive),
+      m_zoomFactor(zoomFactor)
 {
     setFocusPolicy(Qt::StrongFocus);
     // 1) Цветной холст (сохраняем всю текущую логику рендера, blur и flare)
@@ -469,33 +478,21 @@ void StarMapWidget::renderStars()
         return;
     }
 
-    double minX = std::numeric_limits<double>::max();
-    double maxX = -std::numeric_limits<double>::max();
-    double minY = std::numeric_limits<double>::max();
-    double maxY = -std::numeric_limits<double>::max();
-
-    for (const auto& proj : m_projections) {
-        minX = std::min(minX, proj.x);
-        maxX = std::max(maxX, proj.x);
-        minY = std::min(minY, proj.y);
-        maxY = std::max(maxY, proj.y);
-    }
-
-    double dx = maxX - minX;
-    double dy = maxY - minY;
-    if (dx <= 0.0 || dy <= 0.0) {
+    const double limitX = std::tan(std::max(1e-7, m_observation.fovXRad));
+    const double limitY = std::tan(std::max(1e-7, m_observation.fovYRad));
+    if (!(std::isfinite(limitX) && std::isfinite(limitY)) || limitX <= 0.0 || limitY <= 0.0) {
         m_pixelPositions.clear();
         m_hasGeometry = false;
         return;
     }
 
-    m_minXi = minX;
-    m_maxXi = maxX;
-    m_minEta = minY;
-    m_maxEta = maxY;
-    m_centerXi  = 0.5 * (minX + maxX);
-    m_centerEta = 0.5 * (minY + maxY);
-    m_scale     = std::min(W / dx, H / dy);
+    m_minXi = -limitX;
+    m_maxXi = limitX;
+    m_minEta = -limitY;
+    m_maxEta = limitY;
+    m_centerXi = 0.0;
+    m_centerEta = 0.0;
+    m_scale = std::min((W * 0.5) / limitX, (H * 0.5) / limitY);
     m_hasGeometry = true;
 
     const double starSizeFactor = 2.0;
@@ -522,6 +519,11 @@ void StarMapWidget::renderStars()
 
     m_pixelPositions.resize(m_projections.size());
     m_pixelRadii.resize(m_projections.size());
+
+    const double modeBlendBase = (m_planetSizeMode == PlanetRenderSizeMode::Enhanced) ? 1.0 : 0.0;
+    const double zoomBlend = m_zoomActive ? smoothstep(1.05, 6.0, std::max(1.0, m_zoomFactor)) : 0.0;
+    const double sizeBlend = std::max(modeBlendBase, zoomBlend);
+    const double enhancedZoomGain = m_zoomActive ? std::pow(std::max(1.0, m_zoomFactor), 0.18) : 1.0;
 
     // 2) рисуем все точки
     for (size_t i = 0; i < m_projections.size(); ++i) {
@@ -591,19 +593,16 @@ void StarMapWidget::renderStars()
 
             m_pixelRadii[i] = r;
         } else if (id == VENUS_ID) {
-            double r = 1.0;
-            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced) {
-                const double bf = 27.0 / std::pow(2.512, m);
-                r = std::max(5.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
-            } else {
-                const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
-                double rPhys = 0.5 * diamPhysPx;
-                if (!(rPhys > 0.0)) {
-                    const double bfFallback = 27.0 / std::pow(2.512, m);
-                    rPhys = std::clamp(0.35 * std::sqrt(std::max(0.0, bfFallback)), 0.35, 1.2);
-                }
-                r = std::max(0.70, rPhys);
-            }
+            const double bf = 27.0 / std::pow(2.512, m);
+            const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
+            double rReal = 0.5 * diamPhysPx;
+            if (!(rReal > 0.0))
+                rReal = std::clamp(0.35 * std::sqrt(std::max(0.0, bf)), 0.35, 1.2);
+            rReal = std::max(0.70, rReal);
+
+            double rEnhanced = std::max(5.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            rEnhanced *= enhancedZoomGain;
+            const double r = lerp(rReal, rEnhanced, sizeBlend);
             const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
             double dirX = -1.0;
             double dirY = 0.0;
@@ -618,9 +617,9 @@ void StarMapWidget::renderStars()
             }
             const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
-            const double glowRadius = (m_planetSizeMode == PlanetRenderSizeMode::Enhanced)
-                ? (r * 2.5)
-                : std::max(r * 2.4, 2.2 + std::max(0.0, -m) * 0.45);
+            const double glowReal = std::max(r * 2.4, 2.2 + std::max(0.0, -m) * 0.45);
+            const double glowEnhanced = r * 2.5;
+            const double glowRadius = lerp(glowReal, glowEnhanced, sizeBlend);
             QRadialGradient glowGrad(QPointF(sx, sy), glowRadius);
             glowGrad.setColorAt(0.0, QColor(255, 244, 200, 72));
             glowGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
@@ -628,7 +627,7 @@ void StarMapWidget::renderStars()
             p.setBrush(glowGrad);
             p.drawEllipse(QPointF(sx, sy), glowRadius, glowRadius);
 
-            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced || r >= 1.6) {
+            if (sizeBlend > 0.22 || r >= 1.6) {
                 QImage venusSprite = bodySpriteCached(VENUS_ID, static_cast<int>(std::lround(r)), illumination);
                 p.save();
                 p.translate(sx, sy);
@@ -642,19 +641,16 @@ void StarMapWidget::renderStars()
             }
             m_pixelRadii[i] = r;
         } else if (id == MARS_ID) {
-            double r = 1.0;
-            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced) {
-                const double bf = 27.0 / std::pow(2.512, m);
-                r = std::max(4.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
-            } else {
-                const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
-                double rPhys = 0.5 * diamPhysPx;
-                if (!(rPhys > 0.0)) {
-                    const double bfFallback = 27.0 / std::pow(2.512, m);
-                    rPhys = std::clamp(0.32 * std::sqrt(std::max(0.0, bfFallback)), 0.30, 1.0);
-                }
-                r = std::max(0.60, rPhys);
-            }
+            const double bf = 27.0 / std::pow(2.512, m);
+            const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
+            double rReal = 0.5 * diamPhysPx;
+            if (!(rReal > 0.0))
+                rReal = std::clamp(0.32 * std::sqrt(std::max(0.0, bf)), 0.30, 1.0);
+            rReal = std::max(0.60, rReal);
+
+            double rEnhanced = std::max(4.0, std::clamp(1.5 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor);
+            rEnhanced *= enhancedZoomGain;
+            const double r = lerp(rReal, rEnhanced, sizeBlend);
             const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
             double dirX = -1.0;
             double dirY = 0.0;
@@ -669,9 +665,9 @@ void StarMapWidget::renderStars()
             }
             const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
-            const double hazeR = (m_planetSizeMode == PlanetRenderSizeMode::Enhanced)
-                ? (r * 1.7)
-                : std::max(r * 1.8, 1.8 + std::max(0.0, -m) * 0.22);
+            const double hazeReal = std::max(r * 1.8, 1.8 + std::max(0.0, -m) * 0.22);
+            const double hazeEnhanced = r * 1.7;
+            const double hazeR = lerp(hazeReal, hazeEnhanced, sizeBlend);
             QRadialGradient haze(QPointF(sx, sy), hazeR);
             haze.setColorAt(0.0, QColor(180, 210, 245, 16));
             haze.setColorAt(1.0, QColor(0, 0, 0, 0));
@@ -679,7 +675,7 @@ void StarMapWidget::renderStars()
             p.setBrush(haze);
             p.drawEllipse(QPointF(sx, sy), hazeR, hazeR);
 
-            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced || r >= 1.6) {
+            if (sizeBlend > 0.22 || r >= 1.6) {
                 QImage marsSprite = bodySpriteCached(MARS_ID, static_cast<int>(std::lround(r)), illumination);
                 p.save();
                 p.translate(sx, sy);
@@ -695,29 +691,28 @@ void StarMapWidget::renderStars()
         } else if (id == MERCURY_ID || id == JUPITER_ID || id == SATURN_ID
                    || id == URANUS_ID || id == NEPTUNE_ID) {
             const double bf = 27.0 / std::pow(2.512, m);
-            double r = 1.0;
-            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced) {
-                const double baseEnhanced =
-                    std::clamp(1.35 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor;
-                if (id == MERCURY_ID) {
-                    r = std::max(3.1, baseEnhanced * 0.95);
-                } else if (id == JUPITER_ID) {
-                    r = std::max(6.0, baseEnhanced * 1.30);
-                } else if (id == SATURN_ID) {
-                    r = std::max(5.2, baseEnhanced * 1.15);
-                } else if (id == URANUS_ID) {
-                    r = std::max(4.2, baseEnhanced * 1.00);
-                } else if (id == NEPTUNE_ID) {
-                    r = std::max(4.0, baseEnhanced * 0.95);
-                }
-            } else {
-                const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
-                double rPhys = 0.5 * diamPhysPx;
-                if (!(rPhys > 0.0)) {
-                    rPhys = std::clamp(0.30 * std::sqrt(std::max(0.0, bf)), 0.28, 0.9);
-                }
-                r = std::max(0.55, rPhys);
+            const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
+            double rReal = 0.5 * diamPhysPx;
+            if (!(rReal > 0.0))
+                rReal = std::clamp(0.30 * std::sqrt(std::max(0.0, bf)), 0.28, 0.9);
+            rReal = std::max(0.55, rReal);
+
+            const double baseEnhanced =
+                std::clamp(1.35 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor;
+            double rEnhanced = 1.0;
+            if (id == MERCURY_ID) {
+                rEnhanced = std::max(3.1, baseEnhanced * 0.95);
+            } else if (id == JUPITER_ID) {
+                rEnhanced = std::max(6.0, baseEnhanced * 1.30);
+            } else if (id == SATURN_ID) {
+                rEnhanced = std::max(5.2, baseEnhanced * 1.15);
+            } else if (id == URANUS_ID) {
+                rEnhanced = std::max(4.2, baseEnhanced * 1.00);
+            } else if (id == NEPTUNE_ID) {
+                rEnhanced = std::max(4.0, baseEnhanced * 0.95);
             }
+            rEnhanced *= enhancedZoomGain;
+            const double r = lerp(rReal, rEnhanced, sizeBlend);
 
             QColor baseColor(220, 220, 220);
             int glowAlpha = 18;
@@ -738,9 +733,9 @@ void StarMapWidget::renderStars()
                 glowAlpha = 14;
             }
 
-            const double glowR = (m_planetSizeMode == PlanetRenderSizeMode::Enhanced)
-                ? (r * 2.0)
-                : std::max(r * 1.7, 1.6 + std::max(0.0, -m) * 0.18);
+            const double glowReal = std::max(r * 1.7, 1.6 + std::max(0.0, -m) * 0.18);
+            const double glowEnhanced = r * 2.0;
+            const double glowR = lerp(glowReal, glowEnhanced, sizeBlend);
             QRadialGradient glow(QPointF(sx, sy), glowR);
             glow.setColorAt(0.0, QColor(baseColor.red(), baseColor.green(), baseColor.blue(), glowAlpha));
             glow.setColorAt(1.0, QColor(0, 0, 0, 0));
@@ -757,8 +752,9 @@ void StarMapWidget::renderStars()
             p.drawEllipse(QPointF(sx, sy), r, r);
 
             // A subtle Saturn ring hint in enhanced mode.
-            if (id == SATURN_ID && m_planetSizeMode == PlanetRenderSizeMode::Enhanced) {
-                QPen ringPen(QColor(220, 205, 150, 130));
+            if (id == SATURN_ID && sizeBlend > 0.20) {
+                const int ringAlpha = static_cast<int>(std::lround(130.0 * std::clamp(sizeBlend, 0.0, 1.0)));
+                QPen ringPen(QColor(220, 205, 150, std::clamp(ringAlpha, 30, 170)));
                 ringPen.setWidthF(std::max(1.0, r * 0.22));
                 p.setPen(ringPen);
                 p.setBrush(Qt::NoBrush);
@@ -803,6 +799,27 @@ void StarMapWidget::paintEvent(QPaintEvent*)
         p.setBrush(Qt::NoBrush);
         p.drawEllipse(pos, r + margin, r + margin);
     }
+
+    if (m_zoomActive) {
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const QString zoomText = QString("ZOOM x%1").arg(m_zoomFactor, 0, 'f', 2);
+        QFont f = p.font();
+        f.setBold(true);
+        f.setPointSize(std::max(10, f.pointSize() + 1));
+        p.setFont(f);
+
+        QFontMetrics fm(f);
+        const int padX = 10;
+        const int padY = 6;
+        const int textW = fm.horizontalAdvance(zoomText);
+        const int textH = fm.height();
+        const QRect box(14, 14, textW + 2 * padX, textH + 2 * padY);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(20, 28, 45, 175));
+        p.drawRoundedRect(box, 8.0, 8.0);
+        p.setPen(QColor(220, 235, 255));
+        p.drawText(box.adjusted(padX, padY, -padX, -padY), Qt::AlignLeft | Qt::AlignVCenter, zoomText);
+    }
 }
 
 void StarMapWidget::mousePressEvent(QMouseEvent* event)
@@ -843,8 +860,51 @@ void StarMapWidget::mousePressEvent(QMouseEvent* event)
 QWidget::mousePressEvent(event);
 }
 
+void StarMapWidget::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && m_hasGeometry && m_scale > 0.0) {
+        const QPointF local = event->position();
+        const double widgetW = std::max(1, width());
+        const double widgetH = std::max(1, height());
+        const double imageW = static_cast<double>(starMapImage.width());
+        const double imageH = static_cast<double>(starMapImage.height());
+
+        const double xImg = local.x() * imageW / widgetW;
+        const double yImg = local.y() * imageH / widgetH;
+
+        const double xi = (xImg - imageW * 0.5) / m_scale + m_centerXi;
+        const double eta = (imageH * 0.5 - yImg) / m_scale + m_centerEta;
+        emit zoomCenterRequested(xi, eta);
+        event->accept();
+        return;
+    }
+
+    QWidget::mouseDoubleClickEvent(event);
+}
+
 void StarMapWidget::keyPressEvent(QKeyEvent* event)
 {
+    if (event->key() == Qt::Key_Z) {
+        emit zoomToggleRequested();
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape) {
+        emit zoomExitRequested();
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal) {
+        emit zoomStepRequested(+1);
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Minus || event->key() == Qt::Key_Underscore) {
+        emit zoomStepRequested(-1);
+        event->accept();
+        return;
+    }
+
     if (event->key() == Qt::Key_S || event->key() == Qt::Key_7) {
         qDebug() << "[StarMapWidget] keyPress detected" << event->text();
         if (saveSnapshot()) {

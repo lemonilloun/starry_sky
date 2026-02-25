@@ -6,6 +6,7 @@
 #include <QVBoxLayout>
 #include <QMessageBox>
 #include <QDebug>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <utility>
@@ -93,46 +94,56 @@ void MainWindow::on_settingsButton_clicked() {
 
 void MainWindow::buildStarMap()
 {
-    // 1) Считываем значения углов из UI
-    double alpha0_deg = ui->observerRaSpinBox->value();  // RA для визирования
-    double dec0_deg   = ui->observerDecSpinBox->value(); // Dec для визирования
-    double beta1_deg  = ui->beta1SpinBox->value();       // угол вокруг оси xi
-    double beta2_deg  = ui->beta2SpinBox->value();       // угол вокруг оси eta
-    double p_deg      = ui->pSpinBox->value();           // конечный поворот вокруг оси z (визирования)
-    double maxMag     = ui->maxMagnitudeSpinBox->value();
+    resetZoomFromUiAndBuild();
+}
 
-    // Поле зрения
-    double fovX_deg   = ui->fovXSpinBox->value(); // полуширина по X
-    double fovY_deg   = ui->fovYSpinBox->value(); // полуширина по Y
-    int obsDay        = ui->DaySpinBox->value();
-    int obsMonth      = ui->MonthSpinBox->value();
-    int obsYear       = ui->YearSpinBox->value();
+ZoomViewParams MainWindow::readViewParamsFromUi() const
+{
+    ZoomViewParams view;
+    view.alpha0RadJ2000 = ui->observerRaSpinBox->value() * M_PI / 180.0;
+    view.dec0RadJ2000 = ui->observerDecSpinBox->value() * M_PI / 180.0;
+    view.p0Rad = 0.0;
+    view.beta1Rad = ui->beta1SpinBox->value() * M_PI / 180.0;
+    view.beta2Rad = ui->beta2SpinBox->value() * M_PI / 180.0;
+    view.pRad = ui->pSpinBox->value() * M_PI / 180.0;
+    view.fovXRad = ui->fovXSpinBox->value() * M_PI / 180.0;
+    view.fovYRad = ui->fovYSpinBox->value() * M_PI / 180.0;
+    view.maxMagnitude = ui->maxMagnitudeSpinBox->value();
+    view.obsDay = ui->DaySpinBox->value();
+    view.obsMonth = ui->MonthSpinBox->value();
+    view.obsYear = ui->YearSpinBox->value();
+    return view;
+}
 
-    // 2) Перевод в радианы
-    double alpha0 = alpha0_deg * M_PI / 180.0;
-    double dec0   = dec0_deg   * M_PI / 180.0;
-    double p0     = 0;
-    double beta1  = beta1_deg  * M_PI / 180.0;
-    double beta2  = beta2_deg  * M_PI / 180.0;
-    double p      = p_deg      * M_PI / 180.0;
-    double fovX   = fovX_deg   * M_PI / 180.0;
-    double fovY   = fovY_deg   * M_PI / 180.0;
+void MainWindow::resetZoomFromUiAndBuild()
+{
+    const ZoomViewParams base = readViewParamsFromUi();
+    m_zoomState.active = false;
+    m_zoomState.factor = 2.0;
+    m_zoomState.baseView = base;
+    m_zoomState.currentView = base;
+    buildStarMapWithParams(base);
+}
 
-    // 3) Проецируем
+void MainWindow::buildStarMapWithParams(const ZoomViewParams& view)
+{
     StarCatalog::Sun sunInfo;
     auto starProjections = catalog->projectStars(
-        alpha0, dec0, p0,
-        beta1,  beta2, p,
-        fovX,   fovY,
-        maxMag,
+        view.alpha0RadJ2000,
+        view.dec0RadJ2000,
+        view.p0Rad,
+        view.beta1Rad,
+        view.beta2Rad,
+        view.pRad,
+        view.fovXRad,
+        view.fovYRad,
+        view.maxMagnitude,
         sunInfo,
-        obsDay,
-        obsMonth,
-        obsYear
+        view.obsDay,
+        view.obsMonth,
+        view.obsYear
         );
 
-    // 4) Подготовим данные для StarMapWidget
-    // 5) Очищаем старый виджет
     QLayout *mapLayout = ui->MapWidget->layout();
     if (mapLayout) {
         QLayoutItem *child;
@@ -142,31 +153,116 @@ void MainWindow::buildStarMap()
         }
     }
 
-    // 6) Создаем новый и передаем ids
     ObservationInfo obsInfo;
-    obsInfo.observerRaRad = alpha0;
-    obsInfo.observerDecRad = dec0;
-    obsInfo.fovXRad = fovX;
-    obsInfo.fovYRad = fovY;
-    obsInfo.obsDay = obsDay;
-    obsInfo.obsMonth = obsMonth;
-    obsInfo.obsYear = obsYear;
+    obsInfo.observerRaRad = view.alpha0RadJ2000;
+    obsInfo.observerDecRad = view.dec0RadJ2000;
+    obsInfo.fovXRad = view.fovXRad;
+    obsInfo.fovYRad = view.fovYRad;
+    obsInfo.obsDay = view.obsDay;
+    obsInfo.obsMonth = view.obsMonth;
+    obsInfo.obsYear = view.obsYear;
 
     auto *mapWidget = new StarMapWidget(
         std::move(starProjections),
-        sunInfo,            // ← pass the computed Sun object
+        sunInfo,
         m_blurParams,
         m_blurEnabled,
         m_flareParams,
         m_flareEnabled,
         m_planetSizeMode,
         obsInfo,
+        m_zoomState.active,
+        m_zoomState.active ? m_zoomState.factor : 1.0,
         ui->MapWidget
         );
 
-    // 7) Добавляем в лэйаут
+    connect(mapWidget, &StarMapWidget::zoomToggleRequested,
+            this, &MainWindow::onZoomToggleRequested);
+    connect(mapWidget, &StarMapWidget::zoomStepRequested,
+            this, &MainWindow::onZoomStepRequested);
+    connect(mapWidget, &StarMapWidget::zoomCenterRequested,
+            this, &MainWindow::onZoomCenterRequested);
+    connect(mapWidget, &StarMapWidget::zoomExitRequested,
+            this, &MainWindow::onZoomExitRequested);
+
     mapLayout->addWidget(mapWidget);
     mapWidget->setFocus();
+    starMapWidget = mapWidget;
+}
+
+void MainWindow::applyZoomAndRebuild()
+{
+    if (!m_zoomState.active)
+        return;
+
+    const double factor = std::clamp(m_zoomState.factor, 1.0, 20.0);
+    m_zoomState.factor = factor;
+
+    ZoomViewParams zoomed = m_zoomState.currentView;
+    const ZoomViewParams& base = m_zoomState.baseView;
+    zoomed.fovXRad = std::atan(std::tan(base.fovXRad) / factor);
+    zoomed.fovYRad = std::atan(std::tan(base.fovYRad) / factor);
+
+    const double boost = 2.5 * std::log10(std::max(1.0, factor));
+    zoomed.maxMagnitude = std::min(base.maxMagnitude + 3.5, base.maxMagnitude + boost);
+
+    buildStarMapWithParams(zoomed);
+}
+
+void MainWindow::onZoomToggleRequested()
+{
+    if (!m_zoomState.active) {
+        m_zoomState.active = true;
+        m_zoomState.factor = 2.0;
+        m_zoomState.currentView = m_zoomState.baseView;
+        applyZoomAndRebuild();
+        return;
+    }
+
+    m_zoomState.active = false;
+    m_zoomState.factor = 2.0;
+    m_zoomState.currentView = m_zoomState.baseView;
+    buildStarMapWithParams(m_zoomState.baseView);
+}
+
+void MainWindow::onZoomStepRequested(int direction)
+{
+    if (!m_zoomState.active)
+        return;
+
+    if (direction > 0)
+        m_zoomState.factor = std::min(20.0, m_zoomState.factor * 1.25);
+    else if (direction < 0)
+        m_zoomState.factor = std::max(1.0, m_zoomState.factor / 1.25);
+    applyZoomAndRebuild();
+}
+
+void MainWindow::onZoomCenterRequested(double xi, double eta)
+{
+    if (!m_zoomState.active)
+        return;
+
+    double newRa = 0.0;
+    double newDec = 0.0;
+    if (!zoominspector::computeNewCenterFromClick(m_zoomState.currentView, xi, eta, newRa, newDec)) {
+        qWarning() << "[ZoomInspector] unable to compute new center from click";
+        return;
+    }
+
+    m_zoomState.currentView.alpha0RadJ2000 = newRa;
+    m_zoomState.currentView.dec0RadJ2000 = newDec;
+    applyZoomAndRebuild();
+}
+
+void MainWindow::onZoomExitRequested()
+{
+    if (!m_zoomState.active)
+        return;
+
+    m_zoomState.active = false;
+    m_zoomState.factor = 2.0;
+    m_zoomState.currentView = m_zoomState.baseView;
+    buildStarMapWithParams(m_zoomState.baseView);
 }
 
 void MainWindow::onAnglesChanged()

@@ -102,6 +102,16 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 namespace {
 constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
 constexpr bool PLANET_DEBUG_EXPORT_ENABLED = true;
+constexpr bool USE_MOON_TOPO_PARALLAX = true;
+
+// Approximate spacecraft orbit state for Moon topocentric parallax.
+// Observer is modeled in Earth-centered inertial frame (not a ground station).
+// TODO: replace with real spacecraft ephemeris when available.
+constexpr double OBSERVER_ORBIT_ALT_KM = 550.0;
+constexpr double OBSERVER_ORBIT_INCL_DEG = 51.6;
+constexpr double OBSERVER_ORBIT_RAAN_DEG = 0.0;
+constexpr double OBSERVER_ORBIT_PHASE0_DEG = 0.0;
+constexpr double OBSERVER_ORBIT_PERIOD_MIN = 95.0;
 
 std::string trimCopy(std::string s)
 {
@@ -438,6 +448,44 @@ double julianDate(int year, int month, int day,
               + std::floor(30.6001 * (month + 1))
               + day + dayFraction + B - 1524.5;
     return jd;
+}
+
+astro::MoonObserverEqDate buildObserverEqDate(double jd)
+{
+    constexpr double EARTH_RADIUS_KM = 6378.137;
+    const double r = EARTH_RADIUS_KM + OBSERVER_ORBIT_ALT_KM;
+    const double incl = OBSERVER_ORBIT_INCL_DEG * DEG_TO_RAD;
+    const double raan = OBSERVER_ORBIT_RAAN_DEG * DEG_TO_RAD;
+    const double phase0 = OBSERVER_ORBIT_PHASE0_DEG * DEG_TO_RAD;
+    const double periodDays = OBSERVER_ORBIT_PERIOD_MIN / (24.0 * 60.0);
+    const double meanMotion = (periodDays > 0.0) ? (2.0 * M_PI / periodDays) : 0.0;
+
+    double u = phase0 + meanMotion * (jd - JULIAN_DAY_J2000);
+    u = std::fmod(u, 2.0 * M_PI);
+    if (u < 0.0)
+        u += 2.0 * M_PI;
+
+    const double cu = std::cos(u);
+    const double su = std::sin(u);
+    const double cI = std::cos(incl);
+    const double sI = std::sin(incl);
+    const double cO = std::cos(raan);
+    const double sO = std::sin(raan);
+
+    const double xOrb = r * cu;
+    const double yOrb = r * su;
+    const double zOrb = 0.0;
+
+    // R3(raan) * R1(incl) * [xOrb, yOrb, 0]
+    const double xTmp = xOrb;
+    const double yTmp = cI * yOrb - sI * zOrb;
+    const double zTmp = sI * yOrb + cI * zOrb;
+
+    astro::MoonObserverEqDate obs{};
+    obs.xKm = cO * xTmp - sO * yTmp;
+    obs.yKm = sO * xTmp + cO * yTmp;
+    obs.zKm = zTmp;
+    return obs;
 }
 
 std::string resolveElpDataDirectory()
@@ -868,14 +916,20 @@ std::vector<StarProjection> StarCatalog::projectStars(
     const std::string elpDataDir = resolveElpDataDirectory();
     static astro::Elp82bMoonProvider moonElpProvider(elpDataDir, /*precRad=*/0.0);
     static astro::MoonLiteProvider moonFallbackProvider;
+    astro::MoonObserverEqDate moonObserverEqDate{};
+    const astro::MoonObserverEqDate* moonObserverPtr = nullptr;
+    if (USE_MOON_TOPO_PARALLAX) {
+        moonObserverEqDate = buildObserverEqDate(observationJD);
+        moonObserverPtr = &moonObserverEqDate;
+    }
 
     astro::BodyEquatorial moonBody;
     if (moonElpProvider.isReady()) {
-        moonBody = moonElpProvider.computeMoon(observationJD);
+        moonBody = moonElpProvider.computeMoon(observationJD, moonObserverPtr);
     } else {
         std::cerr << "[StarCatalog] ELP82B unavailable, fallback to MoonLite. Reason: "
                   << moonElpProvider.lastError() << std::endl;
-        moonBody = moonFallbackProvider.computeMoon(observationJD);
+        moonBody = moonFallbackProvider.computeMoon(observationJD, moonObserverPtr);
     }
     appendBodyProjection(moonBody);
 

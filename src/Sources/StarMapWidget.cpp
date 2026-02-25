@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <utility>
 #include <cmath>
+#include <array>
 #include <unordered_map>
 
 static constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
@@ -86,6 +87,14 @@ double pixelDiameterFromAngular(double angularDiameterRad, double scale)
     if (!(angularDiameterRad > 0.0) || !(scale > 0.0))
         return 0.0;
     return 2.0 * scale * std::tan(0.5 * angularDiameterRad);
+}
+
+std::array<double, 3> normalizeVec(const std::array<double, 3>& v)
+{
+    const double n = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (n <= 1e-15)
+        return {0.0, 0.0, 1.0};
+    return {v[0] / n, v[1] / n, v[2] / n};
 }
 
 double noiseHash(int x, int y)
@@ -496,20 +505,26 @@ void StarMapWidget::renderStars()
     m_hasGeometry = true;
 
     const double starSizeFactor = 2.0;
-    const double sunVisualRadiusPx = 53.0;
-    const double sunVisualDiamPx = 2.0 * sunVisualRadiusPx;
-    const double defaultSunAngularDiamRad = 0.533 * M_PI / 180.0;
-
-    double sunAngularDiamRad = defaultSunAngularDiamRad;
+    const double sunVisualRadiusBasePx = 53.0;
     QPointF sunPix;
     bool hasSunPix = false;
+    double sunXi = 0.0;
+    double sunEta = 0.0;
+    bool hasSunDir = false;
+    double sunAngularDiameterRad = 0.0;
+    bool hasSunAngularDiameter = false;
 
     for (const auto& proj : m_projections) {
         const uint64_t id = static_cast<uint64_t>(proj.starId);
         if (id != SUN_ID)
             continue;
-        if (proj.angularDiameterRad > 0.0)
-            sunAngularDiamRad = proj.angularDiameterRad;
+        sunXi = proj.x;
+        sunEta = proj.y;
+        hasSunDir = true;
+        if (proj.angularDiameterRad > 0.0) {
+            sunAngularDiameterRad = proj.angularDiameterRad;
+            hasSunAngularDiameter = true;
+        }
         const double sx = W / 2.0 + (proj.x - m_centerXi) * m_scale;
         const double sy = H / 2.0 - (proj.y - m_centerEta) * m_scale;
         sunPix = QPointF(sx, sy);
@@ -524,6 +539,9 @@ void StarMapWidget::renderStars()
     const double zoomBlend = m_zoomActive ? smoothstep(1.05, 6.0, std::max(1.0, m_zoomFactor)) : 0.0;
     const double sizeBlend = std::max(modeBlendBase, zoomBlend);
     const double enhancedZoomGain = m_zoomActive ? std::pow(std::max(1.0, m_zoomFactor), 0.18) : 1.0;
+    const double sunZoomGain = m_zoomActive ? std::pow(std::max(1.0, m_zoomFactor), 0.22) : 1.0;
+    const double sunScale = lerp(1.0, sunZoomGain, zoomBlend);
+    const double sunRenderRadiusPx = sunVisualRadiusBasePx * sunScale;
 
     // 2) рисуем все точки
     for (size_t i = 0; i < m_projections.size(); ++i) {
@@ -539,40 +557,64 @@ void StarMapWidget::renderStars()
 
         if (id == SUN_ID) {
             // Солнце: нейтрально-белый стиль без чрезмерной желтизны.
-            QRadialGradient sunGrad(QPointF(sx - 9.0, sy - 10.0), sunVisualRadiusPx * 1.25);
+            QRadialGradient sunGrad(QPointF(sx - 9.0 * sunScale, sy - 10.0 * sunScale), sunRenderRadiusPx * 1.25);
             sunGrad.setColorAt(0.0, QColor(255, 255, 252, 255));
             sunGrad.setColorAt(0.58, QColor(246, 244, 236, 245));
             sunGrad.setColorAt(1.0, QColor(232, 226, 205, 210));
             p.setPen(Qt::NoPen);
             p.setBrush(sunGrad);
-            p.drawEllipse(QPointF(sx, sy), sunVisualRadiusPx * 0.93, sunVisualRadiusPx);
-            m_pixelRadii[i] = sunVisualRadiusPx;
+            p.drawEllipse(QPointF(sx, sy), sunRenderRadiusPx * 0.93, sunRenderRadiusPx);
+            m_pixelRadii[i] = sunRenderRadiusPx;
         } else if (id == MOON_ID) {
             const double moonAngularDiamRad = (proj.angularDiameterRad > 0.0)
                 ? proj.angularDiameterRad
                 : (0.52 * M_PI / 180.0);
 
-            const double ratio = moonAngularDiamRad / std::max(1e-12, sunAngularDiamRad);
-            const double styleScale = 0.96;
-            const double moonDiamStyled = sunVisualDiamPx * ratio * styleScale;
-            const double moonDiamPhys = 2.0 * m_scale * std::tan(0.5 * moonAngularDiamRad);
-            double moonDiamPx = 0.80 * moonDiamStyled + 0.20 * moonDiamPhys;
-            moonDiamPx = std::clamp(moonDiamPx, 0.82 * sunVisualDiamPx, 1.02 * sunVisualDiamPx);
+            const double moonDiamReal = pixelDiameterFromAngular(moonAngularDiamRad, m_scale);
+            double moonDiamStyled = moonDiamReal;
+            if (hasSunAngularDiameter && sunAngularDiameterRad > 1e-10) {
+                const double ratioToSun = std::clamp(moonAngularDiamRad / sunAngularDiameterRad, 0.75, 1.25);
+                moonDiamStyled = (2.0 * sunRenderRadiusPx) * ratioToSun * 0.90;
+            } else {
+                moonDiamStyled = moonDiamReal * 1.8;
+            }
+            moonDiamStyled *= enhancedZoomGain;
+
+            const double moonBlend = std::max(sizeBlend, 0.35);
+            double moonDiamPx = lerp(moonDiamReal, moonDiamStyled, moonBlend);
+            moonDiamPx = std::max(1.8, moonDiamPx);
             const double r = 0.5 * moonDiamPx;
             const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
 
-            double dirX = -1.0;
-            double dirY = 0.0;
-            if (hasSunPix) {
+            double angleDeg = 0.0;
+            bool angleResolved = false;
+            if (hasSunDir) {
+                const std::array<double, 3> moonDirCam = normalizeVec({proj.x, proj.y, 1.0});
+                const std::array<double, 3> sunDirCam = normalizeVec({sunXi, sunEta, 1.0});
+                const double sm = sunDirCam[0] * moonDirCam[0]
+                                + sunDirCam[1] * moonDirCam[1]
+                                + sunDirCam[2] * moonDirCam[2];
+                std::array<double, 3> pTerm = {
+                    sunDirCam[0] - sm * moonDirCam[0],
+                    sunDirCam[1] - sm * moonDirCam[1],
+                    sunDirCam[2] - sm * moonDirCam[2]
+                };
+                const double pNorm = std::sqrt(pTerm[0] * pTerm[0] + pTerm[1] * pTerm[1] + pTerm[2] * pTerm[2]);
+                if (pNorm > 1e-12) {
+                    pTerm[0] /= pNorm;
+                    pTerm[1] /= pNorm;
+                    // pTerm[2] ignored in screen-angle mapping.
+                    angleDeg = std::atan2(-pTerm[1], pTerm[0]) * 180.0 / M_PI;
+                    angleResolved = true;
+                }
+            }
+            if (!angleResolved && hasSunPix) {
                 const double vx = sunPix.x() - sx;
                 const double vy = sunPix.y() - sy;
                 const double vn = std::hypot(vx, vy);
-                if (vn > 1e-9) {
-                    dirX = vx / vn;
-                    dirY = vy / vn;
-                }
+                if (vn > 1e-9)
+                    angleDeg = std::atan2(vy / vn, vx / vn) * 180.0 / M_PI;
             }
-            const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
             // Soft moon glow (intentionally reduced vs previous version)
             const double glowR = r * 1.22;

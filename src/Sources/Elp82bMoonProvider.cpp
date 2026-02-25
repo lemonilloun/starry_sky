@@ -748,11 +748,19 @@ BodyEquatorial Elp82bMoonProvider::computeMoon(double jd_tt, const MoonObserverE
 
     const SunEquatorial sun = sun_apparent_geocentric(jd_tt);
     const double cosSunDec = std::cos(sun.dec);
-    const Vec3 sunEqDateAu {
+    Vec3 sunEqDateAu {
         std::cos(sun.ra) * cosSunDec * sun.distance_au,
         std::sin(sun.ra) * cosSunDec * sun.distance_au,
         std::sin(sun.dec) * sun.distance_au
     };
+    if (observerEqDate) {
+        const Vec3 observerAu {
+            observerEqDate->xKm / KM_PER_AU,
+            observerEqDate->yKm / KM_PER_AU,
+            observerEqDate->zKm / KM_PER_AU
+        };
+        sunEqDateAu = sunEqDateAu - observerAu;
+    }
 
     const double phaseDeg = phaseAngleDeg(moonEqDateAu, sunEqDateAu);
     const double phaseRad = phaseDeg * DEG_TO_RAD;

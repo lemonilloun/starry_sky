@@ -19,8 +19,13 @@
 
 static constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
 static constexpr uint64_t MOON_ID = astro::bodyIdValue(astro::BodyId::Moon);
+static constexpr uint64_t MERCURY_ID = astro::bodyIdValue(astro::BodyId::Mercury);
 static constexpr uint64_t VENUS_ID = astro::bodyIdValue(astro::BodyId::Venus);
 static constexpr uint64_t MARS_ID = astro::bodyIdValue(astro::BodyId::Mars);
+static constexpr uint64_t JUPITER_ID = astro::bodyIdValue(astro::BodyId::Jupiter);
+static constexpr uint64_t SATURN_ID = astro::bodyIdValue(astro::BodyId::Saturn);
+static constexpr uint64_t URANUS_ID = astro::bodyIdValue(astro::BodyId::Uranus);
+static constexpr uint64_t NEPTUNE_ID = astro::bodyIdValue(astro::BodyId::Neptune);
 
 namespace {
 QString formatRightAscension(double raRad)
@@ -686,6 +691,80 @@ void StarMapWidget::renderStars()
                 p.setPen(Qt::NoPen);
                 p.drawEllipse(QPointF(sx, sy), r, r);
             }
+            m_pixelRadii[i] = r;
+        } else if (id == MERCURY_ID || id == JUPITER_ID || id == SATURN_ID
+                   || id == URANUS_ID || id == NEPTUNE_ID) {
+            const double bf = 27.0 / std::pow(2.512, m);
+            double r = 1.0;
+            if (m_planetSizeMode == PlanetRenderSizeMode::Enhanced) {
+                const double baseEnhanced =
+                    std::clamp(1.35 * std::sqrt(std::max(0.0, bf)), 1.0, 4.0) * starSizeFactor;
+                if (id == MERCURY_ID) {
+                    r = std::max(3.1, baseEnhanced * 0.95);
+                } else if (id == JUPITER_ID) {
+                    r = std::max(6.0, baseEnhanced * 1.30);
+                } else if (id == SATURN_ID) {
+                    r = std::max(5.2, baseEnhanced * 1.15);
+                } else if (id == URANUS_ID) {
+                    r = std::max(4.2, baseEnhanced * 1.00);
+                } else if (id == NEPTUNE_ID) {
+                    r = std::max(4.0, baseEnhanced * 0.95);
+                }
+            } else {
+                const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
+                double rPhys = 0.5 * diamPhysPx;
+                if (!(rPhys > 0.0)) {
+                    rPhys = std::clamp(0.30 * std::sqrt(std::max(0.0, bf)), 0.28, 0.9);
+                }
+                r = std::max(0.55, rPhys);
+            }
+
+            QColor baseColor(220, 220, 220);
+            int glowAlpha = 18;
+            if (id == MERCURY_ID) {
+                baseColor = QColor(192, 186, 176);   // warm gray
+                glowAlpha = 12;
+            } else if (id == JUPITER_ID) {
+                baseColor = QColor(214, 183, 138);   // beige-ochre
+                glowAlpha = 26;
+            } else if (id == SATURN_ID) {
+                baseColor = QColor(224, 210, 160);   // pale yellow
+                glowAlpha = 22;
+            } else if (id == URANUS_ID) {
+                baseColor = QColor(142, 212, 222);   // cyan-blue
+                glowAlpha = 16;
+            } else if (id == NEPTUNE_ID) {
+                baseColor = QColor(98, 142, 232);    // deep blue
+                glowAlpha = 14;
+            }
+
+            const double glowR = (m_planetSizeMode == PlanetRenderSizeMode::Enhanced)
+                ? (r * 2.0)
+                : std::max(r * 1.7, 1.6 + std::max(0.0, -m) * 0.18);
+            QRadialGradient glow(QPointF(sx, sy), glowR);
+            glow.setColorAt(0.0, QColor(baseColor.red(), baseColor.green(), baseColor.blue(), glowAlpha));
+            glow.setColorAt(1.0, QColor(0, 0, 0, 0));
+            p.setPen(Qt::NoPen);
+            p.setBrush(glow);
+            p.drawEllipse(QPointF(sx, sy), glowR, glowR);
+
+            QRadialGradient disk(QPointF(sx - 0.22 * r, sy - 0.24 * r), std::max(1.0, r * 1.35));
+            disk.setColorAt(0.0, baseColor.lighter(128));
+            disk.setColorAt(0.68, baseColor);
+            disk.setColorAt(1.0, baseColor.darker(145));
+            p.setBrush(disk);
+            p.setPen(Qt::NoPen);
+            p.drawEllipse(QPointF(sx, sy), r, r);
+
+            // A subtle Saturn ring hint in enhanced mode.
+            if (id == SATURN_ID && m_planetSizeMode == PlanetRenderSizeMode::Enhanced) {
+                QPen ringPen(QColor(220, 205, 150, 130));
+                ringPen.setWidthF(std::max(1.0, r * 0.22));
+                p.setPen(ringPen);
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(QPointF(sx, sy), r * 1.65, r * 0.72);
+            }
+
             m_pixelRadii[i] = r;
         } else {
             // обычная звезда

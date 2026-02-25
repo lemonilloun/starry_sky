@@ -101,6 +101,7 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 // =============== Вспомогательные функции для матриц ===============
 namespace {
 constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
+constexpr bool PLANET_DEBUG_EXPORT_ENABLED = true;
 
 std::string trimCopy(std::string s)
 {
@@ -178,6 +179,101 @@ std::string formatFixed(double value, int precision)
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(precision) << value;
     return oss.str();
+}
+
+std::string formatRAHMS(double raRad)
+{
+    double hours = raRad * 12.0 / M_PI;
+    hours = std::fmod(hours, 24.0);
+    if (hours < 0.0)
+        hours += 24.0;
+
+    int h = static_cast<int>(std::floor(hours));
+    double mFloat = (hours - h) * 60.0;
+    int m = static_cast<int>(std::floor(mFloat));
+    double s = (mFloat - m) * 60.0;
+
+    std::ostringstream oss;
+    oss << std::setfill('0')
+        << std::setw(2) << h << "h "
+        << std::setw(2) << m << "m "
+        << std::fixed << std::setprecision(2) << std::setw(5) << s << "s";
+    return oss.str();
+}
+
+std::string formatDecDMS(double decRad)
+{
+    double deg = decRad * 180.0 / M_PI;
+    char sign = (deg >= 0.0) ? '+' : '-';
+    double absDeg = std::fabs(deg);
+    int d = static_cast<int>(std::floor(absDeg));
+    double mFloat = (absDeg - d) * 60.0;
+    int m = static_cast<int>(std::floor(mFloat));
+    double s = (mFloat - m) * 60.0;
+
+    std::ostringstream oss;
+    oss << sign
+        << std::setfill('0') << std::setw(2) << d << "d "
+        << std::setw(2) << m << "' "
+        << std::fixed << std::setprecision(1) << std::setw(4) << s << "\"";
+    return oss.str();
+}
+
+void logPlanetEphemeris(const astro::BodyEquatorial& body, int year, int month, int day, double jd)
+{
+    if (body.name.empty())
+        return;
+
+    std::cout << "[PlanetEphemeris] "
+              << year << "-"
+              << std::setfill('0') << std::setw(2) << month << "-"
+              << std::setfill('0') << std::setw(2) << day
+              << " JD=" << std::fixed << std::setprecision(5) << jd
+              << " | " << body.name
+              << " | RA=" << formatRAHMS(body.raRad)
+              << " | Dec=" << formatDecDMS(body.decRad)
+              << " | Mag=" << std::fixed << std::setprecision(2) << body.magnitude
+              << " | DistAU=" << std::fixed << std::setprecision(6) << body.distanceAu
+              << std::endl;
+}
+
+void exportPlanetEphemerisSnapshot(
+    const std::vector<astro::BodyEquatorial>& bodies,
+    int year,
+    int month,
+    int day,
+    double jd
+)
+{
+    try {
+        const std::filesystem::path saveDir = std::filesystem::current_path() / "save";
+        std::filesystem::create_directories(saveDir);
+        const std::filesystem::path outPath = saveDir / "planets_last.txt";
+
+        std::ofstream out(outPath);
+        if (!out.is_open()) {
+            std::cerr << "[PlanetEphemeris] failed to open " << outPath << " for writing" << std::endl;
+            return;
+        }
+
+        out << "Date: " << year << "-"
+            << std::setfill('0') << std::setw(2) << month << "-"
+            << std::setfill('0') << std::setw(2) << day
+            << "  JD: " << std::fixed << std::setprecision(5) << jd << "\n\n";
+        out << "Name\tRA\tDec\tMag\tDistanceAU\n";
+
+        for (const auto& body : bodies) {
+            out << body.name << "\t"
+                << formatRAHMS(body.raRad) << "\t"
+                << formatDecDMS(body.decRad) << "\t"
+                << std::fixed << std::setprecision(2) << body.magnitude << "\t"
+                << std::fixed << std::setprecision(6) << body.distanceAu << "\n";
+        }
+
+        std::cout << "[PlanetEphemeris] exported to " << outPath << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[PlanetEphemeris] export failed: " << e.what() << std::endl;
+    }
 }
 
 std::vector<std::string> buildBodyDesignations(const astro::BodyEquatorial& body)
@@ -738,8 +834,36 @@ std::vector<StarProjection> StarCatalog::projectStars(
 
     // Новые тела: провайдеры выдают J2000, дальше применяется тот же PN, что и для звёзд.
     astro::SsdKeplerPlanetProvider planetProvider(/*enableLightTime=*/true, /*iters=*/2);
-    appendBodyProjection(planetProvider.computeBody(astro::BodyId::Venus, observationJD));
-    appendBodyProjection(planetProvider.computeBody(astro::BodyId::Mars, observationJD));
+    const astro::BodyEquatorial mercury = planetProvider.computeBody(astro::BodyId::Mercury, observationJD);
+    const astro::BodyEquatorial venus = planetProvider.computeBody(astro::BodyId::Venus, observationJD);
+    const astro::BodyEquatorial mars = planetProvider.computeBody(astro::BodyId::Mars, observationJD);
+    const astro::BodyEquatorial jupiter = planetProvider.computeBody(astro::BodyId::Jupiter, observationJD);
+    const astro::BodyEquatorial saturn = planetProvider.computeBody(astro::BodyId::Saturn, observationJD);
+    const astro::BodyEquatorial uranus = planetProvider.computeBody(astro::BodyId::Uranus, observationJD);
+    const astro::BodyEquatorial neptune = planetProvider.computeBody(astro::BodyId::Neptune, observationJD);
+
+    if (PLANET_DEBUG_EXPORT_ENABLED) {
+        // Debug log / quick export for comparison with external ephemeris tools (Stellarium/JPL).
+        logPlanetEphemeris(mercury, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(venus, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(mars, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(jupiter, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(saturn, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(uranus, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(neptune, obsYear, obsMonth, obsDay, observationJD);
+        exportPlanetEphemerisSnapshot(
+            {mercury, venus, mars, jupiter, saturn, uranus, neptune},
+            obsYear, obsMonth, obsDay, observationJD
+        );
+    }
+
+    appendBodyProjection(mercury);
+    appendBodyProjection(venus);
+    appendBodyProjection(mars);
+    appendBodyProjection(jupiter);
+    appendBodyProjection(saturn);
+    appendBodyProjection(uranus);
+    appendBodyProjection(neptune);
 
     const std::string elpDataDir = resolveElpDataDirectory();
     static astro::Elp82bMoonProvider moonElpProvider(elpDataDir, /*precRad=*/0.0);

@@ -6,10 +6,15 @@
 namespace astro {
 
 enum class BodyId : uint64_t {
-    Sun   = 1010101010ULL,
-    Moon  = 1010101011ULL,
-    Venus = 1010101012ULL,
-    Mars  = 1010101013ULL
+    Sun     = 1010101010ULL,
+    Moon    = 1010101011ULL,
+    Mercury = 1010101012ULL,
+    Venus   = 1010101013ULL,
+    Mars    = 1010101014ULL,
+    Jupiter = 1010101015ULL,
+    Saturn  = 1010101016ULL,
+    Uranus  = 1010101017ULL,
+    Neptune = 1010101018ULL
 };
 
 struct BodyEquatorial {

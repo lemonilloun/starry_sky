@@ -37,6 +37,13 @@ struct KeplerCoefficients {
     double omega1Deg;
 };
 
+struct MeanAnomalyCorrection {
+    double b;
+    double c;
+    double s;
+    double fDegPerCentury;
+};
+
 struct NutationTerm {
     int D;
     int M;
@@ -58,6 +65,15 @@ constexpr KeplerCoefficients EMB_COEFF {
     0.0, 0.0
 };
 
+constexpr KeplerCoefficients MERCURY_COEFF {
+    0.38709927, 0.00000037,
+    0.20563593, 0.00001906,
+    7.00497902, -0.00594749,
+    252.25032350, 149472.67411175,
+    77.45779628, 0.16047689,
+    48.33076593, -0.12534081
+};
+
 constexpr KeplerCoefficients VENUS_COEFF {
     0.72333566,  0.00000390,
     0.00677672, -0.00004107,
@@ -74,6 +90,55 @@ constexpr KeplerCoefficients MARS_COEFF {
    -4.55343205, 19140.30268499,
   -23.94362959, 0.44441088,
    49.55953891, -0.29257343
+};
+
+constexpr KeplerCoefficients JUPITER_COEFF {
+    5.20288700, -0.00011607,
+    0.04838624, -0.00013253,
+    1.30439695, -0.00183714,
+    34.39644051, 3034.74612775,
+    14.72847983, 0.21252668,
+    100.47390909, 0.20469106
+};
+
+constexpr KeplerCoefficients SATURN_COEFF {
+    9.53667594, -0.00125060,
+    0.05386179, -0.00050991,
+    2.48599187, 0.00193609,
+    49.95424423, 1222.49362201,
+    92.59887831, -0.41897216,
+    113.66242448, -0.28867794
+};
+
+constexpr KeplerCoefficients URANUS_COEFF {
+    19.18916464, -0.00196176,
+    0.04725744, -0.00004397,
+    0.77263783, -0.00242939,
+    313.23810451, 428.48202785,
+    170.95427630, 0.40805281,
+    74.01692503, 0.04240589
+};
+
+constexpr KeplerCoefficients NEPTUNE_COEFF {
+    30.06992276, 0.00026291,
+    0.00859048, 0.00005105,
+    1.77004347, 0.00035372,
+    -55.12002969, 218.45945325,
+    44.96476227, -0.32241464,
+    131.78422574, -0.00508664
+};
+
+constexpr MeanAnomalyCorrection JUPITER_M_CORR {
+    -0.00012452, 0.06064060, -0.35635438, 38.35125000
+};
+constexpr MeanAnomalyCorrection SATURN_M_CORR {
+    0.00025899, -0.13434469, 0.87320147, 38.35125000
+};
+constexpr MeanAnomalyCorrection URANUS_M_CORR {
+    0.00058331, -0.97731848, 0.17689245, 7.67025000
+};
+constexpr MeanAnomalyCorrection NEPTUNE_M_CORR {
+    -0.00041348, 0.68346318, -0.10162547, 7.67025000
 };
 
 constexpr NutationTerm NUTATION_TERMS[] = {
@@ -183,7 +248,11 @@ double solveKepler(double meanAnomalyRad, double e)
     return E;
 }
 
-Vec3 heliocentricEclipticFromCoefficients(const KeplerCoefficients& coeff, double jd_tt)
+Vec3 heliocentricEclipticFromCoefficients(
+    const KeplerCoefficients& coeff,
+    double jd_tt,
+    const MeanAnomalyCorrection* mCorrection = nullptr
+)
 {
     const double T = (jd_tt - JULIAN_DAY_J2000) / 36525.0;
 
@@ -195,7 +264,15 @@ Vec3 heliocentricEclipticFromCoefficients(const KeplerCoefficients& coeff, doubl
     const double Omega = normDeg(coeff.omega0Deg + coeff.omega1Deg * T) * DEG_TO_RAD;
 
     const double omega = varpi - Omega;
-    const double M = L - varpi;
+    double M = L - varpi;
+    if (mCorrection) {
+        const double arg = mCorrection->fDegPerCentury * T * DEG_TO_RAD;
+        const double correctionDeg =
+            mCorrection->b * T * T
+            + mCorrection->c * std::cos(arg)
+            + mCorrection->s * std::sin(arg);
+        M += correctionDeg * DEG_TO_RAD;
+    }
     const double E = solveKepler(M, e);
 
     const double xPrime = a * (std::cos(E) - e);
@@ -353,7 +430,7 @@ void buildNutationMatrix(double epsMean, double deltaPsi, double deltaEps, doubl
     mul3x3(R1neg, temp, N);
 }
 
-Vec3 applyPrecessionNutation(const Vec3& eqJ2000, double jd_tt)
+[[maybe_unused]] Vec3 applyPrecessionNutation(const Vec3& eqJ2000, double jd_tt)
 {
     const double t = (jd_tt - JULIAN_DAY_J2000) / 36525.0;
 
@@ -390,10 +467,56 @@ double phaseAngleDeg(const Vec3& planetHelioEcl, const Vec3& earthHelioEcl)
     return std::acos(c) / DEG_TO_RAD;
 }
 
-double magnitudeForPlanet(BodyId bodyId, double helioDistanceAu, double geoDistanceAu, double phaseDeg)
+const MeanAnomalyCorrection* meanAnomalyCorrectionForBody(BodyId bodyId)
+{
+    switch (bodyId) {
+    case BodyId::Jupiter:
+        return &JUPITER_M_CORR;
+    case BodyId::Saturn:
+        return &SATURN_M_CORR;
+    case BodyId::Uranus:
+        return &URANUS_M_CORR;
+    case BodyId::Neptune:
+        return &NEPTUNE_M_CORR;
+    default:
+        return nullptr;
+    }
+}
+
+double saturnRingCorrectionMag(const Vec3& saturnHelioEcl, const Vec3& earthHelioEcl)
+{
+    constexpr double RING_INCLINATION = 28.06 * DEG_TO_RAD;
+    constexpr double RING_NODE = 169.51 * DEG_TO_RAD;
+
+    const Vec3 ringNormal = {
+        std::sin(RING_INCLINATION) * std::sin(RING_NODE),
+        -std::sin(RING_INCLINATION) * std::cos(RING_NODE),
+        std::cos(RING_INCLINATION)
+    };
+
+    const Vec3 saturnToEarth = normalize(earthHelioEcl - saturnHelioEcl);
+    const double sinAbsB = std::clamp(std::fabs(dot(ringNormal, saturnToEarth)), 0.0, 1.0);
+    return -2.6 * sinAbsB + 1.25 * sinAbsB * sinAbsB;
+}
+
+double magnitudeForPlanet(
+    BodyId bodyId,
+    double helioDistanceAu,
+    double geoDistanceAu,
+    double phaseDeg,
+    double saturnRingCorrection = 0.0
+)
 {
     if (helioDistanceAu <= 0.0 || geoDistanceAu <= 0.0)
         return 99.0;
+
+    if (bodyId == BodyId::Mercury) {
+        return -0.42
+            + 5.0 * std::log10(helioDistanceAu * geoDistanceAu)
+            + 0.038 * phaseDeg
+            - 0.000273 * phaseDeg * phaseDeg
+            + 0.000002 * phaseDeg * phaseDeg * phaseDeg;
+    }
 
     if (bodyId == BodyId::Venus) {
         return -4.40
@@ -409,25 +532,66 @@ double magnitudeForPlanet(BodyId bodyId, double helioDistanceAu, double geoDista
             + 0.016 * phaseDeg;
     }
 
+    if (bodyId == BodyId::Jupiter) {
+        return -9.40
+            + 5.0 * std::log10(helioDistanceAu * geoDistanceAu)
+            + 0.005 * phaseDeg;
+    }
+
+    if (bodyId == BodyId::Saturn) {
+        return -8.88
+            + 5.0 * std::log10(helioDistanceAu * geoDistanceAu)
+            + 0.044 * phaseDeg
+            + saturnRingCorrection;
+    }
+
+    if (bodyId == BodyId::Uranus) {
+        return -7.19 + 5.0 * std::log10(helioDistanceAu * geoDistanceAu);
+    }
+
+    if (bodyId == BodyId::Neptune) {
+        return -6.87 + 5.0 * std::log10(helioDistanceAu * geoDistanceAu);
+    }
+
     return 99.0;
 }
 
 double radiusKmForBody(BodyId bodyId)
 {
+    if (bodyId == BodyId::Mercury)
+        return 2439.7;
     if (bodyId == BodyId::Venus)
         return 6051.8;
     if (bodyId == BodyId::Mars)
         return 3396.19;
+    if (bodyId == BodyId::Jupiter)
+        return 71492.0;
+    if (bodyId == BodyId::Saturn)
+        return 60268.0;
+    if (bodyId == BodyId::Uranus)
+        return 25559.0;
+    if (bodyId == BodyId::Neptune)
+        return 24764.0;
     return 0.0;
 }
 
 const KeplerCoefficients& coefficientsForBody(BodyId bodyId)
 {
     switch (bodyId) {
+    case BodyId::Mercury:
+        return MERCURY_COEFF;
     case BodyId::Venus:
         return VENUS_COEFF;
     case BodyId::Mars:
         return MARS_COEFF;
+    case BodyId::Jupiter:
+        return JUPITER_COEFF;
+    case BodyId::Saturn:
+        return SATURN_COEFF;
+    case BodyId::Uranus:
+        return URANUS_COEFF;
+    case BodyId::Neptune:
+        return NEPTUNE_COEFF;
     default:
         break;
     }
@@ -436,10 +600,20 @@ const KeplerCoefficients& coefficientsForBody(BodyId bodyId)
 
 std::string bodyName(BodyId bodyId)
 {
+    if (bodyId == BodyId::Mercury)
+        return "Mercury";
     if (bodyId == BodyId::Venus)
         return "Venus";
     if (bodyId == BodyId::Mars)
         return "Mars";
+    if (bodyId == BodyId::Jupiter)
+        return "Jupiter";
+    if (bodyId == BodyId::Saturn)
+        return "Saturn";
+    if (bodyId == BodyId::Uranus)
+        return "Uranus";
+    if (bodyId == BodyId::Neptune)
+        return "Neptune";
     return "";
 }
 
@@ -454,18 +628,19 @@ SsdKeplerPlanetProvider::SsdKeplerPlanetProvider(bool enableLightTime, int light
 BodyEquatorial SsdKeplerPlanetProvider::computeBody(BodyId bodyId, double jd_tt) const
 {
     const auto& targetCoeff = coefficientsForBody(bodyId);
+    const MeanAnomalyCorrection* anomalyCorrection = meanAnomalyCorrectionForBody(bodyId);
 
     const Vec3 earthHelioObs = heliocentricEclipticFromCoefficients(EMB_COEFF, jd_tt);
 
     double jdPlanet = jd_tt;
-    Vec3 planetHelio = heliocentricEclipticFromCoefficients(targetCoeff, jdPlanet);
+    Vec3 planetHelio = heliocentricEclipticFromCoefficients(targetCoeff, jdPlanet, anomalyCorrection);
     Vec3 rhoEcl = planetHelio - earthHelioObs;
 
     if (m_enableLightTime) {
         for (int i = 0; i < m_lightTimeIterations; ++i) {
             const double deltaAu = norm(rhoEcl);
             jdPlanet = jd_tt - deltaAu / C_AU_PER_DAY;
-            planetHelio = heliocentricEclipticFromCoefficients(targetCoeff, jdPlanet);
+            planetHelio = heliocentricEclipticFromCoefficients(targetCoeff, jdPlanet, anomalyCorrection);
             rhoEcl = planetHelio - earthHelioObs;
         }
     }
@@ -477,12 +652,14 @@ BodyEquatorial SsdKeplerPlanetProvider::computeBody(BodyId bodyId, double jd_tt)
     const double geoDistanceAu = norm(rhoEcl);
     const double phaseDeg = phaseAngleDeg(planetHelio, earthHelioObs);
     const double phaseRad = phaseDeg * DEG_TO_RAD;
+    const double saturnRingCorrection =
+        (bodyId == BodyId::Saturn) ? saturnRingCorrectionMag(planetHelio, earthHelioObs) : 0.0;
 
     BodyEquatorial out;
     out.raRad = ra;
     out.decRad = dec;
     out.distanceAu = geoDistanceAu;
-    out.magnitude = magnitudeForPlanet(bodyId, helioDistanceAu, geoDistanceAu, phaseDeg);
+    out.magnitude = magnitudeForPlanet(bodyId, helioDistanceAu, geoDistanceAu, phaseDeg, saturnRingCorrection);
     out.illumination = std::clamp(0.5 * (1.0 + std::cos(phaseRad)), 0.0, 1.0);
     out.bodyId = bodyId;
     out.name = bodyName(bodyId);

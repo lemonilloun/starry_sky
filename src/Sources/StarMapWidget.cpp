@@ -82,6 +82,13 @@ double lerp(double a, double b, double t)
     return a + (b - a) * t;
 }
 
+double visualBrightnessBoostFromMag(double magnitude, double maxBoost)
+{
+    // Strongest boost for bright planets (negative magnitudes), no boost for dim ones.
+    const double drive = std::max(0.0, 1.5 - magnitude);
+    return std::clamp(1.0 + 0.22 * drive, 1.0, maxBoost);
+}
+
 double pixelDiameterFromAngular(double angularDiameterRad, double scale)
 {
     if (!(angularDiameterRad > 0.0) || !(scale > 0.0))
@@ -473,6 +480,11 @@ StarMapWidget::StarMapWidget(
         );
 }
 
+QImage StarMapWidget::renderedImage() const
+{
+    return blurredImage;
+}
+
 void StarMapWidget::renderStars()
 {
     QPainter p(&starMapImage);
@@ -504,7 +516,7 @@ void StarMapWidget::renderStars()
     m_scale = std::min((W * 0.5) / limitX, (H * 0.5) / limitY);
     m_hasGeometry = true;
 
-    const double starSizeFactor = 2.0;
+    const double starSizeFactor = 1.2;
     const double sunVisualRadiusBasePx = 53.0;
     QPointF sunPix;
     bool hasSunPix = false;
@@ -566,6 +578,7 @@ void StarMapWidget::renderStars()
             p.drawEllipse(QPointF(sx, sy), sunRenderRadiusPx * 0.93, sunRenderRadiusPx);
             m_pixelRadii[i] = sunRenderRadiusPx;
         } else if (id == MOON_ID) {
+            constexpr double moonConstantVisualScale = 1.5;
             const double moonAngularDiamRad = (proj.angularDiameterRad > 0.0)
                 ? proj.angularDiameterRad
                 : (0.52 * M_PI / 180.0);
@@ -582,6 +595,7 @@ void StarMapWidget::renderStars()
 
             const double moonBlend = std::max(sizeBlend, 0.35);
             double moonDiamPx = lerp(moonDiamReal, moonDiamStyled, moonBlend);
+            moonDiamPx *= moonConstantVisualScale;
             moonDiamPx = std::max(1.8, moonDiamPx);
             const double r = 0.5 * moonDiamPx;
             const double illumination = std::clamp(proj.illumination, 0.0, 1.0);
@@ -636,6 +650,7 @@ void StarMapWidget::renderStars()
             m_pixelRadii[i] = r;
         } else if (id == VENUS_ID) {
             const double bf = 27.0 / std::pow(2.512, m);
+            const double brightBoost = visualBrightnessBoostFromMag(m, 1.95);
             const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
             double rReal = 0.5 * diamPhysPx;
             if (!(rReal > 0.0))
@@ -659,11 +674,12 @@ void StarMapWidget::renderStars()
             }
             const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
-            const double glowReal = std::max(r * 2.4, 2.2 + std::max(0.0, -m) * 0.45);
-            const double glowEnhanced = r * 2.5;
+            const double glowReal = std::max(r * 2.4, 2.2 + std::max(0.0, -m) * 0.45) * brightBoost;
+            const double glowEnhanced = (r * 2.5) * brightBoost;
             const double glowRadius = lerp(glowReal, glowEnhanced, sizeBlend);
             QRadialGradient glowGrad(QPointF(sx, sy), glowRadius);
-            glowGrad.setColorAt(0.0, QColor(255, 244, 200, 72));
+            const int venusCoreAlpha = std::clamp(static_cast<int>(std::lround(72.0 * brightBoost)), 72, 190);
+            glowGrad.setColorAt(0.0, QColor(255, 244, 200, venusCoreAlpha));
             glowGrad.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
             p.setBrush(glowGrad);
@@ -677,13 +693,14 @@ void StarMapWidget::renderStars()
                 p.drawImage(QPointF(-venusSprite.width() * 0.5, -venusSprite.height() * 0.5), venusSprite);
                 p.restore();
             } else {
-                p.setBrush(QColor(244, 235, 206));
+                p.setBrush(QColor(244, 235, 206).lighter(std::clamp(static_cast<int>(std::lround(100.0 * brightBoost)), 105, 165)));
                 p.setPen(Qt::NoPen);
                 p.drawEllipse(QPointF(sx, sy), r, r);
             }
             m_pixelRadii[i] = r;
         } else if (id == MARS_ID) {
             const double bf = 27.0 / std::pow(2.512, m);
+            const double brightBoost = visualBrightnessBoostFromMag(m, 1.70);
             const double diamPhysPx = pixelDiameterFromAngular(proj.angularDiameterRad, m_scale);
             double rReal = 0.5 * diamPhysPx;
             if (!(rReal > 0.0))
@@ -707,11 +724,12 @@ void StarMapWidget::renderStars()
             }
             const double angleDeg = std::atan2(dirY, dirX) * 180.0 / M_PI;
 
-            const double hazeReal = std::max(r * 1.8, 1.8 + std::max(0.0, -m) * 0.22);
-            const double hazeEnhanced = r * 1.7;
+            const double hazeReal = std::max(r * 1.8, 1.8 + std::max(0.0, -m) * 0.22) * brightBoost;
+            const double hazeEnhanced = (r * 1.7) * brightBoost;
             const double hazeR = lerp(hazeReal, hazeEnhanced, sizeBlend);
             QRadialGradient haze(QPointF(sx, sy), hazeR);
-            haze.setColorAt(0.0, QColor(180, 210, 245, 16));
+            const int marsHazeAlpha = std::clamp(static_cast<int>(std::lround(16.0 * brightBoost)), 16, 95);
+            haze.setColorAt(0.0, QColor(180, 210, 245, marsHazeAlpha));
             haze.setColorAt(1.0, QColor(0, 0, 0, 0));
             p.setPen(Qt::NoPen);
             p.setBrush(haze);
@@ -725,7 +743,7 @@ void StarMapWidget::renderStars()
                 p.drawImage(QPointF(-marsSprite.width() * 0.5, -marsSprite.height() * 0.5), marsSprite);
                 p.restore();
             } else {
-                p.setBrush(QColor(201, 120, 88));
+                p.setBrush(QColor(201, 120, 88).lighter(std::clamp(static_cast<int>(std::lround(100.0 * brightBoost)), 103, 150)));
                 p.setPen(Qt::NoPen);
                 p.drawEllipse(QPointF(sx, sy), r, r);
             }
@@ -775,8 +793,16 @@ void StarMapWidget::renderStars()
                 glowAlpha = 14;
             }
 
-            const double glowReal = std::max(r * 1.7, 1.6 + std::max(0.0, -m) * 0.18);
-            const double glowEnhanced = r * 2.0;
+            double brightBoost = 1.0;
+            if (id == JUPITER_ID) {
+                brightBoost = visualBrightnessBoostFromMag(m, 1.80);
+            } else if (id == SATURN_ID) {
+                brightBoost = visualBrightnessBoostFromMag(m, 1.45);
+            }
+            glowAlpha = std::clamp(static_cast<int>(std::lround(glowAlpha * brightBoost)), 10, 175);
+
+            const double glowReal = std::max(r * 1.7, 1.6 + std::max(0.0, -m) * 0.18) * brightBoost;
+            const double glowEnhanced = (r * 2.0) * brightBoost;
             const double glowR = lerp(glowReal, glowEnhanced, sizeBlend);
             QRadialGradient glow(QPointF(sx, sy), glowR);
             glow.setColorAt(0.0, QColor(baseColor.red(), baseColor.green(), baseColor.blue(), glowAlpha));
@@ -786,9 +812,12 @@ void StarMapWidget::renderStars()
             p.drawEllipse(QPointF(sx, sy), glowR, glowR);
 
             QRadialGradient disk(QPointF(sx - 0.22 * r, sy - 0.24 * r), std::max(1.0, r * 1.35));
-            disk.setColorAt(0.0, baseColor.lighter(128));
-            disk.setColorAt(0.68, baseColor);
-            disk.setColorAt(1.0, baseColor.darker(145));
+            const int lightBoost = std::clamp(static_cast<int>(std::lround(128.0 * brightBoost)), 128, 180);
+            const int midBoost = std::clamp(static_cast<int>(std::lround(100.0 * brightBoost)), 100, 155);
+            const int darkBoost = std::clamp(static_cast<int>(std::lround(145.0 / brightBoost)), 115, 145);
+            disk.setColorAt(0.0, baseColor.lighter(lightBoost));
+            disk.setColorAt(0.68, baseColor.lighter(midBoost));
+            disk.setColorAt(1.0, baseColor.darker(darkBoost));
             p.setBrush(disk);
             p.setPen(Qt::NoPen);
             p.drawEllipse(QPointF(sx, sy), r, r);

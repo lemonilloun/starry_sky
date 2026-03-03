@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1368</width>
-    <height>810</height>
+    <height>811</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -212,7 +212,7 @@
    <widget class="QPushButton" name="buildMapButton">
     <property name="geometry">
      <rect>
-      <x>1170</x>
+      <x>1090</x>
       <y>730</y>
       <width>121</width>
       <height>32</height>
@@ -526,6 +526,19 @@
     </property>
     <property name="text">
      <string>Время наблюдения</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="SimulateButton">
+    <property name="geometry">
+     <rect>
+      <x>1230</x>
+      <y>730</y>
+      <width>121</width>
+      <height>32</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Симуляция</string>
     </property>
    </widget>
   </widget>

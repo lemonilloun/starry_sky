@@ -101,7 +101,7 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 // =============== Вспомогательные функции для матриц ===============
 namespace {
 constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
-constexpr bool PLANET_DEBUG_EXPORT_ENABLED = true;
+constexpr bool PLANET_DEBUG_EXPORT_ENABLED = false;
 constexpr bool USE_MOON_TOPO_PARALLAX = true;
 
 // Approximate spacecraft orbit state for Moon topocentric parallax.
@@ -994,4 +994,96 @@ std::vector<StarProjection> StarCatalog::projectStars(
     }
 
     return projected;
+}
+
+bool StarCatalog::computeBodyCenterJ2000(
+    astro::BodyId bodyId,
+    int obsDay,
+    int obsMonth,
+    int obsYear,
+    double& raJ2000,
+    double& decJ2000
+    ) const
+{
+    constexpr double OBS_HOUR   = 6.0;
+    constexpr double OBS_MINUTE = 30.0;
+    constexpr double OBS_SECOND = 5.0;
+
+    const double observationJD = julianDate(
+        obsYear,
+        obsMonth,
+        obsDay,
+        OBS_HOUR,
+        OBS_MINUTE,
+        OBS_SECOND
+    );
+
+    if (bodyId == astro::BodyId::Sun) {
+        const astro::SunEquatorial sunEq = astro::sun_apparent_geocentric(observationJD);
+        const double cosDec = std::cos(sunEq.dec);
+        const std::array<double, 3> sunEqDate = {
+            std::cos(sunEq.ra) * cosDec,
+            std::sin(sunEq.ra) * cosDec,
+            std::sin(sunEq.dec)
+        };
+
+        double PN[3][3], PNinv[3][3];
+        buildPrecessionNutationMatrix(observationJD, PN);
+        transpose3x3(PN, PNinv);
+        const auto sunEqJ2000 = mul3x3_3x1(PNinv, sunEqDate);
+
+        raJ2000 = std::atan2(sunEqJ2000[1], sunEqJ2000[0]);
+        if (raJ2000 < 0.0)
+            raJ2000 += 2.0 * M_PI;
+        decJ2000 = std::asin(std::clamp(sunEqJ2000[2], -1.0, 1.0));
+        return true;
+    }
+
+    if (bodyId == astro::BodyId::Moon) {
+        const std::string elpDataDir = resolveElpDataDirectory();
+        static astro::Elp82bMoonProvider moonElpProvider(elpDataDir, /*precRad=*/0.0);
+        static astro::MoonLiteProvider moonFallbackProvider;
+
+        astro::MoonObserverEqDate moonObserverEqDate{};
+        const astro::MoonObserverEqDate* moonObserverPtr = nullptr;
+        if (USE_MOON_TOPO_PARALLAX) {
+            moonObserverEqDate = buildObserverEqDate(observationJD);
+            moonObserverPtr = &moonObserverEqDate;
+        }
+
+        astro::BodyEquatorial moonBody;
+        if (moonElpProvider.isReady()) {
+            moonBody = moonElpProvider.computeMoon(observationJD, moonObserverPtr);
+        } else {
+            moonBody = moonFallbackProvider.computeMoon(observationJD, moonObserverPtr);
+        }
+
+        if (!std::isfinite(moonBody.raRad) || !std::isfinite(moonBody.decRad))
+            return false;
+        raJ2000 = moonBody.raRad;
+        decJ2000 = moonBody.decRad;
+        return true;
+    }
+
+    switch (bodyId) {
+    case astro::BodyId::Mercury:
+    case astro::BodyId::Venus:
+    case astro::BodyId::Mars:
+    case astro::BodyId::Jupiter:
+    case astro::BodyId::Saturn:
+    case astro::BodyId::Uranus:
+    case astro::BodyId::Neptune: {
+        static astro::SsdKeplerPlanetProvider planetProvider(/*enableLightTime=*/true, /*iters=*/2);
+        const astro::BodyEquatorial body = planetProvider.computeBody(bodyId, observationJD);
+        if (!std::isfinite(body.raRad) || !std::isfinite(body.decRad))
+            return false;
+        raJ2000 = body.raRad;
+        decJ2000 = body.decRad;
+        return true;
+    }
+    default:
+        break;
+    }
+
+    return false;
 }

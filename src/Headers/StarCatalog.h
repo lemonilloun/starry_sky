@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include "CelestialBodyTypes.h"
 
 // Структура для хранения исходной информации о звезде
 struct Star {
@@ -61,6 +62,15 @@ public:
         int    obsDay,
         int    obsMonth,
         int    obsYear
+        ) const;
+
+    bool computeBodyCenterJ2000(
+        astro::BodyId bodyId,
+        int obsDay,
+        int obsMonth,
+        int obsYear,
+        double& raJ2000,
+        double& decJ2000
         ) const;
 
 private:

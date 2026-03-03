@@ -13,6 +13,8 @@ SOURCES += \
     src/Sources/MyGLWidget.cpp \
     src/Sources/PlanetEphemeris.cpp \
     src/Sources/SettingsDialog.cpp \
+    src/Sources/SimulationDialog.cpp \
+    src/Sources/SimulationPlayerWidget.cpp \
     src/Sources/SunEphemeris.cpp \
     src/Sources/StarCatalog.cpp \
     src/Sources/StarMapWidget.cpp \
@@ -29,6 +31,9 @@ HEADERS += \
     src/Headers/MyGLWidget.h \
     src/Headers/PlanetEphemeris.h \
     src/Headers/SettingsDialog.h \
+    src/Headers/SimulationDialog.h \
+    src/Headers/SimulationPlayerWidget.h \
+    src/Headers/SimulationTypes.h \
     src/Headers/SunEphemeris.h \
     src/Headers/StarCatalog.h \
     src/Headers/StarMapWidget.h \

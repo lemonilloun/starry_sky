@@ -47,6 +47,7 @@ public:
         double                       zoomFactor,
         QWidget*                     parent = nullptr
         );
+    QImage renderedImage() const;
 
 signals:
     void zoomToggleRequested();

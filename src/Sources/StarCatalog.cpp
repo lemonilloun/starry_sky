@@ -4,7 +4,13 @@
 #include <cmath>
 #include <algorithm>
 #include <cctype>
+#include <iomanip>
 #include <iostream>  // Для вывода в консоль
+#include <filesystem>
+#include "CelestialBodyTypes.h"
+#include "Elp82bMoonProvider.h"
+#include "MoonEphemeris.h"
+#include "PlanetEphemeris.h"
 #include "SunEphemeris.h"
 
 StarCatalog::StarCatalog(const std::string& filename) {
@@ -94,7 +100,18 @@ void StarCatalog::loadFromFile(const std::string& filename) {
 
 // =============== Вспомогательные функции для матриц ===============
 namespace {
-constexpr uint64_t SUN_ID = 1010101010ULL;
+constexpr uint64_t SUN_ID = astro::bodyIdValue(astro::BodyId::Sun);
+constexpr bool PLANET_DEBUG_EXPORT_ENABLED = false;
+constexpr bool USE_MOON_TOPO_PARALLAX = true;
+
+// Approximate spacecraft orbit state for Moon topocentric parallax.
+// Observer is modeled in Earth-centered inertial frame (not a ground station).
+// TODO: replace with real spacecraft ephemeris when available.
+constexpr double OBSERVER_ORBIT_ALT_KM = 550.0;
+constexpr double OBSERVER_ORBIT_INCL_DEG = 51.6;
+constexpr double OBSERVER_ORBIT_RAAN_DEG = 0.0;
+constexpr double OBSERVER_ORBIT_PHASE0_DEG = 0.0;
+constexpr double OBSERVER_ORBIT_PERIOD_MIN = 95.0;
 
 std::string trimCopy(std::string s)
 {
@@ -164,6 +181,125 @@ std::vector<std::string> buildCatalogDesignations(const Star& star, const std::s
     pushString("SAO",    star.sao);
     pushString("TYC",    star.tyc);
     pushNumber("StarID", star.id);
+    return records;
+}
+
+std::string formatFixed(double value, int precision)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(precision) << value;
+    return oss.str();
+}
+
+std::string formatRAHMS(double raRad)
+{
+    double hours = raRad * 12.0 / M_PI;
+    hours = std::fmod(hours, 24.0);
+    if (hours < 0.0)
+        hours += 24.0;
+
+    int h = static_cast<int>(std::floor(hours));
+    double mFloat = (hours - h) * 60.0;
+    int m = static_cast<int>(std::floor(mFloat));
+    double s = (mFloat - m) * 60.0;
+
+    std::ostringstream oss;
+    oss << std::setfill('0')
+        << std::setw(2) << h << "h "
+        << std::setw(2) << m << "m "
+        << std::fixed << std::setprecision(2) << std::setw(5) << s << "s";
+    return oss.str();
+}
+
+std::string formatDecDMS(double decRad)
+{
+    double deg = decRad * 180.0 / M_PI;
+    char sign = (deg >= 0.0) ? '+' : '-';
+    double absDeg = std::fabs(deg);
+    int d = static_cast<int>(std::floor(absDeg));
+    double mFloat = (absDeg - d) * 60.0;
+    int m = static_cast<int>(std::floor(mFloat));
+    double s = (mFloat - m) * 60.0;
+
+    std::ostringstream oss;
+    oss << sign
+        << std::setfill('0') << std::setw(2) << d << "d "
+        << std::setw(2) << m << "' "
+        << std::fixed << std::setprecision(1) << std::setw(4) << s << "\"";
+    return oss.str();
+}
+
+void logPlanetEphemeris(const astro::BodyEquatorial& body, int year, int month, int day, double jd)
+{
+    if (body.name.empty())
+        return;
+
+    std::cout << "[PlanetEphemeris] "
+              << year << "-"
+              << std::setfill('0') << std::setw(2) << month << "-"
+              << std::setfill('0') << std::setw(2) << day
+              << " JD=" << std::fixed << std::setprecision(5) << jd
+              << " | " << body.name
+              << " | RA=" << formatRAHMS(body.raRad)
+              << " | Dec=" << formatDecDMS(body.decRad)
+              << " | Mag=" << std::fixed << std::setprecision(2) << body.magnitude
+              << " | DistAU=" << std::fixed << std::setprecision(6) << body.distanceAu
+              << std::endl;
+}
+
+void exportPlanetEphemerisSnapshot(
+    const std::vector<astro::BodyEquatorial>& bodies,
+    int year,
+    int month,
+    int day,
+    double jd
+)
+{
+    try {
+        const std::filesystem::path saveDir = std::filesystem::current_path() / "save";
+        std::filesystem::create_directories(saveDir);
+        const std::filesystem::path outPath = saveDir / "planets_last.txt";
+
+        std::ofstream out(outPath);
+        if (!out.is_open()) {
+            std::cerr << "[PlanetEphemeris] failed to open " << outPath << " for writing" << std::endl;
+            return;
+        }
+
+        out << "Date: " << year << "-"
+            << std::setfill('0') << std::setw(2) << month << "-"
+            << std::setfill('0') << std::setw(2) << day
+            << "  JD: " << std::fixed << std::setprecision(5) << jd << "\n\n";
+        out << "Name\tRA\tDec\tMag\tDistanceAU\n";
+
+        for (const auto& body : bodies) {
+            out << body.name << "\t"
+                << formatRAHMS(body.raRad) << "\t"
+                << formatDecDMS(body.decRad) << "\t"
+                << std::fixed << std::setprecision(2) << body.magnitude << "\t"
+                << std::fixed << std::setprecision(6) << body.distanceAu << "\n";
+        }
+
+        std::cout << "[PlanetEphemeris] exported to " << outPath << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[PlanetEphemeris] export failed: " << e.what() << std::endl;
+    }
+}
+
+std::vector<std::string> buildBodyDesignations(const astro::BodyEquatorial& body)
+{
+    std::vector<std::string> records;
+    records.emplace_back("Type " + astro::bodyTypeLabel(body.bodyId));
+    records.emplace_back("DistanceAU " + formatFixed(body.distanceAu, 6));
+
+    if (body.angularDiameterRad > 0.0) {
+        double arcsec = body.angularDiameterRad * 180.0 / M_PI * 3600.0;
+        records.emplace_back("AngDiamArcsec " + formatFixed(arcsec, 2));
+    }
+    if (body.illumination >= 0.0) {
+        records.emplace_back("Illumination " + formatFixed(body.illumination * 100.0, 1) + "%");
+    }
+
     return records;
 }
 
@@ -269,11 +405,11 @@ void buildTransitionMatrix(const std::array<double,3>& r0_eq, double T[3][3])
 
     // Первая строка:
     T[0][0] =  Y0 / D;
-    T[0][1] =  X0 / D;
+    T[0][1] = -X0 / D;
     T[0][2] =  0.0;
 
     // Вторая строка:
-    T[1][0] =  (X0*Z0) / D;
+    T[1][0] = -(X0*Z0) / D;
     T[1][1] =  (-Y0*Z0) / D;
     T[1][2] =   D;  // sqrt(X0^2 + Y0^2)
 
@@ -312,6 +448,72 @@ double julianDate(int year, int month, int day,
               + std::floor(30.6001 * (month + 1))
               + day + dayFraction + B - 1524.5;
     return jd;
+}
+
+astro::MoonObserverEqDate buildObserverEqDate(double jd)
+{
+    constexpr double EARTH_RADIUS_KM = 6378.137;
+    const double r = EARTH_RADIUS_KM + OBSERVER_ORBIT_ALT_KM;
+    const double incl = OBSERVER_ORBIT_INCL_DEG * DEG_TO_RAD;
+    const double raan = OBSERVER_ORBIT_RAAN_DEG * DEG_TO_RAD;
+    const double phase0 = OBSERVER_ORBIT_PHASE0_DEG * DEG_TO_RAD;
+    const double periodDays = OBSERVER_ORBIT_PERIOD_MIN / (24.0 * 60.0);
+    const double meanMotion = (periodDays > 0.0) ? (2.0 * M_PI / periodDays) : 0.0;
+
+    double u = phase0 + meanMotion * (jd - JULIAN_DAY_J2000);
+    u = std::fmod(u, 2.0 * M_PI);
+    if (u < 0.0)
+        u += 2.0 * M_PI;
+
+    const double cu = std::cos(u);
+    const double su = std::sin(u);
+    const double cI = std::cos(incl);
+    const double sI = std::sin(incl);
+    const double cO = std::cos(raan);
+    const double sO = std::sin(raan);
+
+    const double xOrb = r * cu;
+    const double yOrb = r * su;
+    const double zOrb = 0.0;
+
+    // R3(raan) * R1(incl) * [xOrb, yOrb, 0]
+    const double xTmp = xOrb;
+    const double yTmp = cI * yOrb - sI * zOrb;
+    const double zTmp = sI * yOrb + cI * zOrb;
+
+    astro::MoonObserverEqDate obs{};
+    obs.xKm = cO * xTmp - sO * yTmp;
+    obs.yKm = sO * xTmp + cO * yTmp;
+    obs.zKm = zTmp;
+    return obs;
+}
+
+std::string resolveElpDataDirectory()
+{
+    namespace fs = std::filesystem;
+    const fs::path sourceBased = fs::path(__FILE__).parent_path().parent_path() / "data" / "elp82b";
+    std::vector<fs::path> candidates;
+    candidates.push_back(sourceBased);
+
+    std::error_code ec;
+    fs::path cursor = fs::current_path(ec);
+    if (!ec) {
+        for (int depth = 0; depth < 12; ++depth) {
+            candidates.push_back(cursor / "src" / "data" / "elp82b");
+            fs::path parent = cursor.parent_path();
+            if (parent == cursor || parent.empty())
+                break;
+            cursor = parent;
+        }
+    }
+
+    for (const auto& candidate : candidates) {
+        std::error_code ec;
+        if (fs::exists(candidate / "ELP1", ec))
+            return fs::weakly_canonical(candidate, ec).string();
+    }
+
+    return "src/data/elp82b";
 }
 
 void buildPrecessionMatrix(double t, double P[3][3])
@@ -555,7 +757,7 @@ std::vector<StarProjection> StarCatalog::projectStars(
 
     // 7) Подготавливаем проекцию
     std::vector<StarProjection> projected;
-    projected.reserve(stars.size() + 1);
+    projected.reserve(stars.size() + 4);
 
     double limitX = std::tan(fovX);
     double limitY = std::tan(fovY);
@@ -568,6 +770,58 @@ std::vector<StarProjection> StarCatalog::projectStars(
 
     double RzP[3][3];
     rotationZ(p, RzP);
+
+    auto appendBodyProjection = [&](const astro::BodyEquatorial& body) {
+        if (body.magnitude > maxMagnitude)
+            return;
+
+        // Bodies are provided in J2000 and transformed to observation date with the same PN as stars.
+        const double cosDecJ2000 = std::cos(body.decRad);
+        std::array<double, 3> eqVecJ2000 = {
+            std::cos(body.raRad) * cosDecJ2000,
+            std::sin(body.raRad) * cosDecJ2000,
+            std::sin(body.decRad)
+        };
+        auto eqVec = mul3x3_3x1(PN, eqVecJ2000);
+
+        double raDate = std::atan2(eqVec[1], eqVec[0]);
+        if (raDate < 0.0)
+            raDate += 2.0 * M_PI;
+        double decDate = std::asin(std::clamp(eqVec[2], -1.0, 1.0));
+
+        std::array<double, 3> eqDateUnit = {
+            std::cos(raDate) * std::cos(decDate),
+            std::sin(raDate) * std::cos(decDate),
+            std::sin(decDate)
+        };
+
+        auto cam = mul3x3_3x1(T1_noRoll, eqDateUnit);
+        auto camRolled = mul3x3_3x1(RzP, cam);
+        const double z = camRolled[2];
+        if (z <= 0.0 || std::fabs(z) < 1e-12)
+            return;
+
+        const double xi = camRolled[0] / z;
+        const double eta = camRolled[1] / z;
+        if (std::fabs(xi) > limitX || std::fabs(eta) > limitY)
+            return;
+
+        StarProjection pr;
+        pr.x = xi;
+        pr.y = eta;
+        pr.magnitude = body.magnitude;
+        pr.starId = static_cast<double>(astro::bodyIdValue(body.bodyId));
+        pr.raRad = raDate;
+        pr.decRad = decDate;
+        pr.colorIndex = 0.0;
+        pr.hasColorIndex = false;
+        pr.angularDiameterRad = body.angularDiameterRad;
+        pr.illumination = body.illumination;
+        pr.isSpecialBody = true;
+        pr.displayName = body.name;
+        pr.catalogDesignations = buildBodyDesignations(body);
+        projected.push_back(pr);
+    };
 
     // Аппарентное положение Солнца на дату наблюдения
     astro::SunEquatorial sunEq = astro::sun_apparent_geocentric(observationJD);
@@ -606,10 +860,78 @@ std::vector<StarProjection> StarCatalog::projectStars(
             sunProj.starId    = SUN_ID;
             sunProj.raRad     = sunEq.ra;
             sunProj.decRad    = sunEq.dec;
+            sunProj.colorIndex = 0.0;
+            sunProj.hasColorIndex = false;
+            sunProj.angularDiameterRad = 2.0 * std::atan(695700.0 / (sunEq.distance_au * 149597870.7));
+            sunProj.illumination = 1.0;
+            sunProj.isSpecialBody = true;
             sunProj.displayName = "Sun (Sol)";
+            sunProj.catalogDesignations = buildBodyDesignations({
+                sunEq.ra,
+                sunEq.dec,
+                sunEq.distance_au,
+                -26.74,
+                sunProj.angularDiameterRad,
+                1.0,
+                astro::BodyId::Sun,
+                "Sun (Sol)"
+            });
             projected.push_back(sunProj);
         }
     }
+
+    // Новые тела: провайдеры выдают J2000, дальше применяется тот же PN, что и для звёзд.
+    astro::SsdKeplerPlanetProvider planetProvider(/*enableLightTime=*/true, /*iters=*/2);
+    const astro::BodyEquatorial mercury = planetProvider.computeBody(astro::BodyId::Mercury, observationJD);
+    const astro::BodyEquatorial venus = planetProvider.computeBody(astro::BodyId::Venus, observationJD);
+    const astro::BodyEquatorial mars = planetProvider.computeBody(astro::BodyId::Mars, observationJD);
+    const astro::BodyEquatorial jupiter = planetProvider.computeBody(astro::BodyId::Jupiter, observationJD);
+    const astro::BodyEquatorial saturn = planetProvider.computeBody(astro::BodyId::Saturn, observationJD);
+    const astro::BodyEquatorial uranus = planetProvider.computeBody(astro::BodyId::Uranus, observationJD);
+    const astro::BodyEquatorial neptune = planetProvider.computeBody(astro::BodyId::Neptune, observationJD);
+
+    if (PLANET_DEBUG_EXPORT_ENABLED) {
+        // Debug log / quick export for comparison with external ephemeris tools (Stellarium/JPL).
+        logPlanetEphemeris(mercury, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(venus, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(mars, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(jupiter, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(saturn, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(uranus, obsYear, obsMonth, obsDay, observationJD);
+        logPlanetEphemeris(neptune, obsYear, obsMonth, obsDay, observationJD);
+        exportPlanetEphemerisSnapshot(
+            {mercury, venus, mars, jupiter, saturn, uranus, neptune},
+            obsYear, obsMonth, obsDay, observationJD
+        );
+    }
+
+    appendBodyProjection(mercury);
+    appendBodyProjection(venus);
+    appendBodyProjection(mars);
+    appendBodyProjection(jupiter);
+    appendBodyProjection(saturn);
+    appendBodyProjection(uranus);
+    appendBodyProjection(neptune);
+
+    const std::string elpDataDir = resolveElpDataDirectory();
+    static astro::Elp82bMoonProvider moonElpProvider(elpDataDir, /*precRad=*/0.0);
+    static astro::MoonLiteProvider moonFallbackProvider;
+    astro::MoonObserverEqDate moonObserverEqDate{};
+    const astro::MoonObserverEqDate* moonObserverPtr = nullptr;
+    if (USE_MOON_TOPO_PARALLAX) {
+        moonObserverEqDate = buildObserverEqDate(observationJD);
+        moonObserverPtr = &moonObserverEqDate;
+    }
+
+    astro::BodyEquatorial moonBody;
+    if (moonElpProvider.isReady()) {
+        moonBody = moonElpProvider.computeMoon(observationJD, moonObserverPtr);
+    } else {
+        std::cerr << "[StarCatalog] ELP82B unavailable, fallback to MoonLite. Reason: "
+                  << moonElpProvider.lastError() << std::endl;
+        moonBody = moonFallbackProvider.computeMoon(observationJD, moonObserverPtr);
+    }
+    appendBodyProjection(moonBody);
 
     for (auto &star : stars) {
 
@@ -661,10 +983,107 @@ std::vector<StarProjection> StarCatalog::projectStars(
         pr.starId    = star.id;
         pr.raRad     = ra;
         pr.decRad    = dec;
+        pr.colorIndex = star.colorIndex;
+        pr.hasColorIndex = true;
+        pr.angularDiameterRad = 0.0;
+        pr.illumination = -1.0;
+        pr.isSpecialBody = false;
         pr.displayName = makeDisplayName(star);
         pr.catalogDesignations = buildCatalogDesignations(star, pr.displayName);
         projected.push_back(pr);
     }
 
     return projected;
+}
+
+bool StarCatalog::computeBodyCenterJ2000(
+    astro::BodyId bodyId,
+    int obsDay,
+    int obsMonth,
+    int obsYear,
+    double& raJ2000,
+    double& decJ2000
+    ) const
+{
+    constexpr double OBS_HOUR   = 6.0;
+    constexpr double OBS_MINUTE = 30.0;
+    constexpr double OBS_SECOND = 5.0;
+
+    const double observationJD = julianDate(
+        obsYear,
+        obsMonth,
+        obsDay,
+        OBS_HOUR,
+        OBS_MINUTE,
+        OBS_SECOND
+    );
+
+    if (bodyId == astro::BodyId::Sun) {
+        const astro::SunEquatorial sunEq = astro::sun_apparent_geocentric(observationJD);
+        const double cosDec = std::cos(sunEq.dec);
+        const std::array<double, 3> sunEqDate = {
+            std::cos(sunEq.ra) * cosDec,
+            std::sin(sunEq.ra) * cosDec,
+            std::sin(sunEq.dec)
+        };
+
+        double PN[3][3], PNinv[3][3];
+        buildPrecessionNutationMatrix(observationJD, PN);
+        transpose3x3(PN, PNinv);
+        const auto sunEqJ2000 = mul3x3_3x1(PNinv, sunEqDate);
+
+        raJ2000 = std::atan2(sunEqJ2000[1], sunEqJ2000[0]);
+        if (raJ2000 < 0.0)
+            raJ2000 += 2.0 * M_PI;
+        decJ2000 = std::asin(std::clamp(sunEqJ2000[2], -1.0, 1.0));
+        return true;
+    }
+
+    if (bodyId == astro::BodyId::Moon) {
+        const std::string elpDataDir = resolveElpDataDirectory();
+        static astro::Elp82bMoonProvider moonElpProvider(elpDataDir, /*precRad=*/0.0);
+        static astro::MoonLiteProvider moonFallbackProvider;
+
+        astro::MoonObserverEqDate moonObserverEqDate{};
+        const astro::MoonObserverEqDate* moonObserverPtr = nullptr;
+        if (USE_MOON_TOPO_PARALLAX) {
+            moonObserverEqDate = buildObserverEqDate(observationJD);
+            moonObserverPtr = &moonObserverEqDate;
+        }
+
+        astro::BodyEquatorial moonBody;
+        if (moonElpProvider.isReady()) {
+            moonBody = moonElpProvider.computeMoon(observationJD, moonObserverPtr);
+        } else {
+            moonBody = moonFallbackProvider.computeMoon(observationJD, moonObserverPtr);
+        }
+
+        if (!std::isfinite(moonBody.raRad) || !std::isfinite(moonBody.decRad))
+            return false;
+        raJ2000 = moonBody.raRad;
+        decJ2000 = moonBody.decRad;
+        return true;
+    }
+
+    switch (bodyId) {
+    case astro::BodyId::Mercury:
+    case astro::BodyId::Venus:
+    case astro::BodyId::Mars:
+    case astro::BodyId::Jupiter:
+    case astro::BodyId::Saturn:
+    case astro::BodyId::Uranus:
+    case astro::BodyId::Neptune: {
+        static astro::SsdKeplerPlanetProvider planetProvider(/*enableLightTime=*/true, /*iters=*/2);
+        const astro::BodyEquatorial body = planetProvider.computeBody(bodyId, observationJD);
+        if (!std::isfinite(body.raRad) || !std::isfinite(body.decRad))
+            return false;
+        raJ2000 = body.raRad;
+        decJ2000 = body.decRad;
+        return true;
+    }
+    default:
+        break;
+    }
+
+    return false;
 }

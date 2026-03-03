@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include "CelestialBodyTypes.h"
 
 // Структура для хранения исходной информации о звезде
 struct Star {
@@ -30,6 +31,11 @@ struct StarProjection {
     double starId;
     double raRad;     // прямое восхождение (рад) на дату наблюдения
     double decRad;    // склонение (рад) на дату наблюдения
+    double colorIndex = 0.0;
+    bool hasColorIndex = false;
+    double angularDiameterRad = 0.0;
+    double illumination = -1.0; // 0..1 для Луны, иначе -1
+    bool isSpecialBody = false;
     std::string displayName;
     std::vector<std::string> catalogDesignations;
 };
@@ -56,6 +62,15 @@ public:
         int    obsDay,
         int    obsMonth,
         int    obsYear
+        ) const;
+
+    bool computeBodyCenterJ2000(
+        astro::BodyId bodyId,
+        int obsDay,
+        int obsMonth,
+        int obsYear,
+        double& raJ2000,
+        double& decJ2000
         ) const;
 
 private:
